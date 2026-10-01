@@ -1,0 +1,57 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+data/
+training/data/
+training/output/
+.DS_Store
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+*.env
+*.env.*
+.env.bak*
+.env.before*
+
+# Local backups created during development
+.cloud-backup/
+*.before-*
+*.before.*
+*.bak
+*.bak.*
+
+# Virtual environments
+.venv/
+venv/
+
+# Local runtime data
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Local model/cache artifacts
+.cache/
+
+# Keep the public environment template trackable.
+# This must come after the broad *.env.* rule.
+!.env.example
+
+# Local diagnostic output
+retrieval_debug*.txt

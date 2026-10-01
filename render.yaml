@@ -1,0 +1,42 @@
+services:
+  - type: web
+    name: bhajan-marg-ai-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements-cloud.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: APP_MODE
+        value: cloud
+      - key: LLM_PROVIDER
+        value: gemini
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash-lite
+      - key: QDRANT_COLLECTION
+        value: bhajan_marg_chunks_cloud_v1
+      - key: QDRANT_DENSE_MODEL
+        value: sentence-transformers/all-minilm-l6-v2
+      - key: QDRANT_BM25_MODEL
+        value: qdrant/bm25
+      - key: DAILY_UPDATE_ENABLED
+        value: "false"
+      - key: RERANKER_ENABLED
+        value: "false"
+      - key: USE_LLM_EVIDENCE_JUDGE
+        value: "true"
+      - key: FINAL_SOURCES
+        value: "3"
+      - key: CONTEXT_NEIGHBORS
+        value: "0"
+      - key: CORS_ORIGINS
+        value: "*"
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: QDRANT_URL
+        sync: false
+      - key: QDRANT_API_KEY
+        sync: false
+      - key: ADMIN_TOKEN
+        sync: false
