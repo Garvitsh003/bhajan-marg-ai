@@ -1,39 +1,1250 @@
 <!doctype html>
-<html lang="en">
+<html lang="hi">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Bhajan Marg AI</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#6d1626" />
+  <meta name="color-scheme" content="light" />
+  <title>Bhajan Marg AI — सत्संग खोज</title>
+  <meta
+    name="description"
+    content="Bhajan Marg satsang सत्संग-संग्रह से प्रमाणित शिक्षाओं को खोजने वाला AI अनुभव।"
+  />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Glegoo:wght@400;700&family=Noto+Sans+Devanagari:wght@400;500;600;700&family=Tiro+Devanagari+Hindi:ital@0;1&display=swap"
+    rel="stylesheet"
+  />
+  <script src="/config.js"></script>
+
   <style>
-    *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,sans-serif;background:#fbf7ef;color:#23180f}
-    .wrap{max-width:920px;margin:0 auto;padding:32px 18px 80px}.hero{text-align:center;margin:20px 0 34px}
-    h1{font-size:38px;margin:0}.sub{opacity:.7;margin-top:8px}.chat{display:flex;flex-direction:column;gap:18px}
-    .msg{padding:18px 20px;border-radius:18px;line-height:1.65;white-space:pre-wrap}.user{align-self:flex-end;background:#3b2818;color:#fff;max-width:75%}
-    .ai{background:#fff;border:1px solid #eadfce;box-shadow:0 8px 30px rgba(60,35,12,.05)}
-    .badge{font-size:12px;font-weight:700;display:inline-block;padding:5px 9px;border-radius:999px;margin-bottom:10px;background:#f1e3c9}
-    .source{margin-top:12px;padding:14px;background:#fffaf0;border:1px solid #ead9b8;border-radius:14px}
-    .source a{color:#8c4b00;font-weight:700;text-decoration:none}.excerpt{margin-top:8px;font-family:Georgia,serif;line-height:1.55}
-    form{position:sticky;bottom:16px;margin-top:24px;background:#fff;border:1px solid #dfd2bf;border-radius:18px;padding:10px;display:flex;gap:8px;box-shadow:0 12px 40px rgba(40,20,0,.12)}
-    textarea{flex:1;border:0;outline:0;resize:none;padding:12px;font:inherit;min-height:50px;background:transparent}
-    button{border:0;background:#3b2818;color:#fff;border-radius:12px;padding:0 20px;font-weight:700;cursor:pointer}
-    button:disabled{opacity:.6;cursor:not-allowed}.status{text-align:center;font-size:13px;opacity:.65;margin-top:8px}.small{font-size:12px;opacity:.68}
+    :root{
+      --maroon:#6d1626;
+      --maroon-deep:#44101b;
+      --maroon-soft:#8f3444;
+      --saffron:#d98b2b;
+      --saffron-soft:#f0b45d;
+      --gold:#c89b48;
+      --cream:#fff8ea;
+      --cream-2:#f8ecd4;
+      --paper:#fffdf7;
+      --ink:#33251f;
+      --muted:#78665c;
+      --line:rgba(109,22,38,.14);
+      --shadow:0 22px 70px rgba(70,25,20,.13);
+      --soft-shadow:0 10px 30px rgba(70,25,20,.08);
+      --radius:28px;
+      --font-ui:"Noto Sans Devanagari",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      --font-devotional:"Tiro Devanagari Hindi","Noto Sans Devanagari",serif;
+    }
+
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth}
+    body{
+      margin:0;
+      min-height:100vh;
+      color:var(--ink);
+      background:
+        radial-gradient(circle at 15% 10%, rgba(217,139,43,.17), transparent 25rem),
+        radial-gradient(circle at 84% 14%, rgba(109,22,38,.11), transparent 27rem),
+        radial-gradient(circle at 50% 85%, rgba(200,155,72,.12), transparent 30rem),
+        linear-gradient(145deg,#fffaf0 0%,#f8ead0 45%,#fff8eb 100%);
+      font-family:var(--font-ui);
+      overflow-x:hidden;
+    }
+
+    button,input,textarea{font:inherit}
+    button{cursor:pointer}
+
+    .aura{
+      position:fixed;
+      inset:0;
+      pointer-events:none;
+      z-index:0;
+      overflow:hidden;
+    }
+
+    .aura::before{
+      content:"";
+      position:absolute;
+      width:44rem;
+      height:44rem;
+      left:50%;
+      top:-31rem;
+      transform:translateX(-50%);
+      border:1px solid rgba(109,22,38,.12);
+      border-radius:50%;
+      box-shadow:
+        0 0 0 45px rgba(200,155,72,.035),
+        0 0 0 90px rgba(109,22,38,.025),
+        0 0 0 135px rgba(200,155,72,.02);
+    }
+
+    .aura-name{
+      position:absolute;
+      color:var(--maroon);
+      opacity:.055;
+      font-family:var(--font-devotional);
+      white-space:nowrap;
+      user-select:none;
+      filter:blur(.05px);
+      animation:drift 18s ease-in-out infinite alternate;
+      transform-origin:center;
+    }
+
+    @keyframes drift{
+      from{translate:0 0}
+      to{translate:0 -18px}
+    }
+
+    .shell{
+      position:relative;
+      z-index:1;
+      width:min(1180px,calc(100% - 28px));
+      margin:0 auto;
+      padding:20px 0 110px;
+    }
+
+    .topbar{
+      position:sticky;
+      top:12px;
+      z-index:40;
+      display:grid;
+      grid-template-columns:auto 1fr auto;
+      align-items:center;
+      gap:16px;
+      padding:10px 12px;
+      border:1px solid rgba(109,22,38,.10);
+      border-radius:22px;
+      background:rgba(255,250,240,.77);
+      box-shadow:0 10px 35px rgba(79,35,28,.08);
+      backdrop-filter:blur(18px);
+      -webkit-backdrop-filter:blur(18px);
+    }
+
+    .brand{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      min-width:0;
+    }
+
+    .brand-mark{
+      width:43px;
+      height:43px;
+      border-radius:50%;
+      display:grid;
+      place-items:center;
+      color:#fff8e7;
+      background:
+        radial-gradient(circle at 35% 32%,#dca14c,#9d3b3b 54%,#5b1422 100%);
+      box-shadow:
+        inset 0 0 0 1px rgba(255,255,255,.3),
+        0 7px 18px rgba(109,22,38,.18);
+      font-family:var(--font-devotional);
+      font-size:17px;
+      flex:0 0 auto;
+    }
+
+    .brand-text{min-width:0}
+    .brand-title{
+      font-weight:800;
+      color:var(--maroon-deep);
+      letter-spacing:-.02em;
+      white-space:nowrap;
+      line-height:1.1;
+    }
+    .brand-sub{
+      color:var(--muted);
+      font-size:11px;
+      margin-top:2px;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+
+    .top-mantra{
+      text-align:center;
+      font-family:var(--font-devotional);
+      color:rgba(109,22,38,.72);
+      font-size:18px;
+      letter-spacing:.03em;
+    }
+
+    .top-actions{
+      display:flex;
+      align-items:center;
+      gap:8px;
+    }
+
+    .ghost-btn{
+      border:1px solid rgba(109,22,38,.13);
+      background:rgba(255,255,255,.54);
+      color:var(--maroon);
+      border-radius:14px;
+      padding:10px 12px;
+      transition:.2s ease;
+      font-size:13px;
+      font-weight:700;
+    }
+    .ghost-btn:hover{
+      transform:translateY(-1px);
+      background:#fff;
+      border-color:rgba(109,22,38,.22);
+    }
+
+    .hero{
+      min-height:355px;
+      display:grid;
+      place-items:center;
+      text-align:center;
+      padding:72px 18px 42px;
+    }
+
+    .hero-inner{max-width:800px}
+
+    .eyebrow{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      color:var(--maroon);
+      border:1px solid rgba(109,22,38,.12);
+      background:rgba(255,253,247,.67);
+      padding:7px 12px;
+      border-radius:999px;
+      font-size:12px;
+      font-weight:800;
+      letter-spacing:.03em;
+      box-shadow:var(--soft-shadow);
+    }
+
+    .eyebrow-dot{
+      width:7px;height:7px;border-radius:50%;
+      background:var(--saffron);
+      box-shadow:0 0 0 4px rgba(217,139,43,.13);
+    }
+
+    .hero-radha{
+      margin:18px 0 3px;
+      font-family:var(--font-devotional);
+      color:var(--maroon);
+      font-size:clamp(46px,8vw,88px);
+      line-height:1;
+      letter-spacing:-.04em;
+      text-shadow:0 10px 35px rgba(109,22,38,.10);
+    }
+
+    .hero h1{
+      margin:10px 0 0;
+      font-size:clamp(24px,4vw,44px);
+      color:var(--maroon-deep);
+      line-height:1.17;
+      letter-spacing:-.04em;
+    }
+
+    .hero p{
+      max-width:690px;
+      margin:15px auto 0;
+      color:#6e5a50;
+      font-size:clamp(14px,2vw,17px);
+      line-height:1.8;
+    }
+
+    .hero-divider{
+      width:120px;
+      height:18px;
+      margin:20px auto 0;
+      position:relative;
+    }
+    .hero-divider::before,
+    .hero-divider::after{
+      content:"";
+      position:absolute;
+      top:9px;
+      width:43px;
+      height:1px;
+      background:linear-gradient(90deg,transparent,var(--gold));
+    }
+    .hero-divider::before{left:0}
+    .hero-divider::after{right:0;transform:scaleX(-1)}
+    .hero-divider span{
+      display:block;
+      width:11px;height:11px;
+      margin:auto;
+      border:1px solid var(--gold);
+      transform:rotate(45deg);
+      background:#fff9ed;
+    }
+
+    .layout{
+      display:grid;
+      grid-template-columns:minmax(0,1fr) 275px;
+      gap:18px;
+      align-items:start;
+    }
+
+    .chat-card{
+      border:1px solid rgba(109,22,38,.09);
+      background:rgba(255,253,247,.85);
+      backdrop-filter:blur(8px);
+      -webkit-backdrop-filter:blur(8px);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      overflow:hidden;
+    }
+
+    .chat-head{
+      padding:17px 20px;
+      border-bottom:1px solid var(--line);
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      background:
+        linear-gradient(90deg,rgba(109,22,38,.035),rgba(217,139,43,.05),transparent);
+    }
+
+    .chat-head-title{
+      font-weight:800;
+      color:var(--maroon-deep);
+    }
+
+    .chat-head-note{
+      color:var(--muted);
+      font-size:12px;
+      margin-top:2px;
+    }
+
+    .evidence-legend{
+      display:flex;
+      gap:5px;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+    }
+
+    .tiny-chip{
+      border-radius:999px;
+      padding:5px 8px;
+      font-size:10px;
+      font-weight:800;
+      border:1px solid rgba(109,22,38,.11);
+      color:#765245;
+      background:#fff9ed;
+    }
+
+    .messages{
+      min-height:320px;
+      max-height:none;
+      padding:22px;
+      display:flex;
+      flex-direction:column;
+      gap:18px;
+    }
+
+    .welcome{
+      border:1px dashed rgba(109,22,38,.14);
+      background:
+        radial-gradient(circle at 50% 0%,rgba(217,139,43,.10),transparent 60%),
+        rgba(255,255,255,.49);
+      border-radius:24px;
+      padding:28px 22px 24px;
+      text-align:center;
+    }
+
+    .welcome-symbol{
+      width:54px;height:54px;
+      border-radius:50%;
+      display:grid;place-items:center;
+      margin:0 auto 12px;
+      background:linear-gradient(145deg,#f4c374,#9c3441);
+      color:white;
+      box-shadow:0 12px 30px rgba(109,22,38,.17);
+      font-family:var(--font-devotional);
+      font-size:18px;
+    }
+
+    .welcome h2{
+      margin:0;
+      color:var(--maroon-deep);
+      font-size:21px;
+    }
+
+    .welcome p{
+      margin:8px auto 17px;
+      color:var(--muted);
+      max-width:570px;
+      line-height:1.75;
+      font-size:13px;
+    }
+
+    .suggestions{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      justify-content:center;
+    }
+
+    .suggestion{
+      border:1px solid rgba(109,22,38,.12);
+      background:#fffaf0;
+      color:#694034;
+      border-radius:999px;
+      padding:8px 11px;
+      font-size:12px;
+      transition:.2s ease;
+    }
+    .suggestion:hover{
+      background:#fff;
+      transform:translateY(-1px);
+      border-color:rgba(109,22,38,.24);
+    }
+
+    .message{
+      display:flex;
+      gap:10px;
+      align-items:flex-start;
+      animation:messageIn .25s ease both;
+    }
+    @keyframes messageIn{
+      from{opacity:0;transform:translateY(8px)}
+      to{opacity:1;transform:none}
+    }
+
+    .message.user{justify-content:flex-end}
+
+    .message.failed .bubble{
+      opacity:.72;
+      outline:1px dashed rgba(109,22,38,.35);
+    }
+
+    .avatar{
+      flex:0 0 auto;
+      width:34px;height:34px;
+      display:grid;place-items:center;
+      border-radius:50%;
+      font-size:12px;
+      font-weight:900;
+      color:white;
+      background:linear-gradient(145deg,#d19a48,#7d2231);
+      margin-top:2px;
+    }
+
+    .message.user .avatar{
+      order:2;
+      background:#6e5447;
+    }
+
+    .bubble{
+      max-width:min(760px,88%);
+      border-radius:20px;
+      padding:14px 16px;
+      line-height:1.72;
+      font-size:14px;
+    }
+
+    .message.user .bubble{
+      color:#fff9ee;
+      background:linear-gradient(135deg,#6d1626,#8f3444);
+      border-bottom-right-radius:6px;
+      box-shadow:0 10px 25px rgba(109,22,38,.13);
+    }
+
+    .message.ai .bubble{
+      width:min(850px,calc(100% - 44px));
+      max-width:none;
+      background:#fff;
+      border:1px solid rgba(109,22,38,.10);
+      border-bottom-left-radius:6px;
+      box-shadow:var(--soft-shadow);
+      padding:0;
+      overflow:hidden;
+    }
+
+    .answer-meta{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      padding:11px 14px;
+      border-bottom:1px solid rgba(109,22,38,.08);
+      background:linear-gradient(90deg,#fff8ea,#fffdf7);
+    }
+
+    .evidence-badge{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      border-radius:999px;
+      padding:6px 9px;
+      font-size:10px;
+      font-weight:900;
+      letter-spacing:.02em;
+    }
+
+    .evidence-badge.direct{
+      color:#6d1626;
+      background:rgba(217,139,43,.17);
+      border:1px solid rgba(217,139,43,.34);
+    }
+    .evidence-badge.related{
+      color:#71490f;
+      background:#fff2ce;
+      border:1px solid #ead497;
+    }
+    .evidence-badge.none{
+      color:#6d625b;
+      background:#f4f0e9;
+      border:1px solid #ded5cc;
+    }
+
+    .query-label{
+      color:var(--muted);
+      font-size:10px;
+      text-align:right;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+      max-width:55%;
+    }
+
+    .answer-body{padding:4px 16px 16px}
+
+    .answer-section{
+      margin-top:13px;
+      border-radius:17px;
+      padding:15px 16px;
+      background:#fffdfa;
+      border:1px solid rgba(109,22,38,.075);
+    }
+
+    .answer-section.direct-teaching{
+      background:
+        linear-gradient(135deg,rgba(217,139,43,.09),rgba(255,255,255,.92));
+      border-color:rgba(217,139,43,.22);
+    }
+
+    .section-title{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      color:var(--maroon-deep);
+      font-weight:900;
+      font-size:14px;
+      margin:0 0 8px;
+    }
+
+    .answer-text{
+      white-space:pre-wrap;
+      color:#44352e;
+      line-height:1.82;
+      font-size:14px;
+    }
+
+    .answer-note{
+      margin-top:12px;
+      color:#88786f;
+      font-size:11px;
+      line-height:1.6;
+    }
+
+    .sources{
+      padding:0 16px 16px;
+    }
+
+    .sources-title{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:8px;
+      margin:2px 0 9px;
+      color:var(--maroon-deep);
+      font-weight:900;
+      font-size:13px;
+    }
+
+    .source-grid{
+      display:grid;
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      gap:9px;
+    }
+
+    .source-card{
+      display:block;
+      color:inherit;
+      text-decoration:none;
+      border:1px solid rgba(109,22,38,.10);
+      background:linear-gradient(150deg,#fffaf0,#fff);
+      border-radius:16px;
+      padding:12px;
+      transition:.2s ease;
+      min-width:0;
+    }
+
+    .source-card:hover{
+      transform:translateY(-2px);
+      border-color:rgba(109,22,38,.24);
+      box-shadow:0 10px 24px rgba(109,22,38,.08);
+    }
+
+    .source-top{
+      display:flex;
+      gap:8px;
+      align-items:center;
+      justify-content:space-between;
+      margin-bottom:6px;
+    }
+
+    .source-time{
+      color:white;
+      background:var(--maroon);
+      border-radius:999px;
+      padding:4px 7px;
+      font-size:10px;
+      font-weight:900;
+      flex:0 0 auto;
+    }
+
+    .source-relevance{
+      color:#8a6d3d;
+      font-size:10px;
+      font-weight:800;
+    }
+
+    .source-title{
+      color:#4f3028;
+      font-weight:800;
+      font-size:12px;
+      line-height:1.45;
+      display:-webkit-box;
+      -webkit-line-clamp:2;
+      -webkit-box-orient:vertical;
+      overflow:hidden;
+    }
+
+    .source-excerpt{
+      margin-top:7px;
+      color:#7b6a61;
+      font-size:11px;
+      line-height:1.55;
+      display:-webkit-box;
+      -webkit-line-clamp:3;
+      -webkit-box-orient:vertical;
+      overflow:hidden;
+    }
+
+    .composer-wrap{
+      position:sticky;
+      bottom:0;
+      z-index:30;
+      padding:14px;
+      background:
+        linear-gradient(to top,rgba(255,250,240,.98) 65%,rgba(255,250,240,.74),transparent);
+    }
+
+    .composer{
+      display:flex;
+      gap:10px;
+      align-items:flex-end;
+      padding:9px;
+      border-radius:20px;
+      border:1px solid rgba(109,22,38,.13);
+      background:rgba(255,255,255,.94);
+      box-shadow:0 14px 38px rgba(65,29,23,.12);
+    }
+
+    .composer textarea{
+      min-height:47px;
+      max-height:145px;
+      flex:1;
+      resize:none;
+      border:0;
+      outline:0;
+      background:transparent;
+      padding:12px 11px 8px;
+      color:var(--ink);
+      line-height:1.5;
+      font-size:14px;
+    }
+    .composer textarea::placeholder{color:#a18f84}
+
+    .ask-btn{
+      flex:0 0 auto;
+      min-width:105px;
+      height:47px;
+      border:0;
+      border-radius:15px;
+      color:white;
+      font-weight:900;
+      background:linear-gradient(135deg,#7b1b2d,#a0464f);
+      box-shadow:0 10px 22px rgba(109,22,38,.18);
+      transition:.2s ease;
+    }
+
+    .ask-btn:hover:not(:disabled){
+      transform:translateY(-1px);
+      box-shadow:0 13px 26px rgba(109,22,38,.23);
+    }
+    .ask-btn:disabled{opacity:.55;cursor:not-allowed}
+
+    .composer-foot{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      padding:7px 5px 0;
+      color:#917e73;
+      font-size:10px;
+    }
+
+    .status{
+      overflow:hidden;
+      white-space:nowrap;
+      text-overflow:ellipsis;
+    }
+
+    .side{
+      position:sticky;
+      top:92px;
+      display:flex;
+      flex-direction:column;
+      gap:14px;
+    }
+
+    .jap-card,
+    .side-card{
+      border:1px solid rgba(109,22,38,.10);
+      background:rgba(255,253,247,.84);
+      backdrop-filter:blur(10px);
+      -webkit-backdrop-filter:blur(10px);
+      border-radius:22px;
+      box-shadow:var(--soft-shadow);
+    }
+
+    .jap-card{
+      position:relative;
+      overflow:hidden;
+      padding:18px;
+    }
+
+    .jap-card::after{
+      content:"राधा";
+      position:absolute;
+      right:-4px;
+      bottom:-20px;
+      color:rgba(109,22,38,.045);
+      font-family:var(--font-devotional);
+      font-size:76px;
+      pointer-events:none;
+    }
+
+    .jap-label{
+      position:relative;
+      z-index:1;
+      color:var(--maroon);
+      font-weight:900;
+      font-size:12px;
+      letter-spacing:.02em;
+    }
+
+    .jap-number{
+      position:relative;
+      z-index:1;
+      font-family:"Glegoo",var(--font-ui);
+      color:var(--maroon-deep);
+      font-size:42px;
+      font-weight:700;
+      line-height:1;
+      margin:10px 0 6px;
+      letter-spacing:-.05em;
+    }
+
+    .jap-caption{
+      position:relative;
+      z-index:1;
+      color:var(--muted);
+      font-size:11px;
+      line-height:1.55;
+    }
+
+    .jap-selector{
+      position:relative;
+      z-index:1;
+      margin-top:14px;
+      display:grid;
+      gap:7px;
+    }
+
+    .jap-selector label{
+      color:#6f4e43;
+      font-size:10px;
+      font-weight:800;
+    }
+
+    .jap-selector select,
+    .custom-jap-row input{
+      width:100%;
+      border:1px solid rgba(109,22,38,.13);
+      background:#fffaf0;
+      color:#4f3028;
+      border-radius:12px;
+      padding:9px 10px;
+      outline:none;
+      font-size:12px;
+    }
+
+    .custom-jap-row{
+      display:none;
+      grid-template-columns:1fr auto;
+      gap:7px;
+    }
+
+    .custom-jap-row.show{display:grid}
+
+    .custom-jap-row button{
+      border:0;
+      border-radius:11px;
+      padding:8px 11px;
+      background:#7b1b2d;
+      color:white;
+      font-size:11px;
+      font-weight:800;
+    }
+
+    .jap-simple-note{
+      position:relative;
+      z-index:1;
+      margin-top:11px;
+      color:#8b7468;
+      font-size:10px;
+      line-height:1.55;
+    }
+
+    .mala{
+      position:relative;
+      z-index:1;
+      display:grid;
+      grid-template-columns:repeat(18,1fr);
+      gap:4px;
+      margin:15px 0 13px;
+      align-items:center;
+    }
+
+    .bead{
+      width:6px;
+      height:6px;
+      justify-self:center;
+      border-radius:50%;
+      background:#d8b269;
+      opacity:.34;
+      transition:.2s ease;
+    }
+    .bead.active{
+      background:var(--maroon);
+      opacity:.9;
+      transform:scale(1.18);
+      box-shadow:0 0 0 3px rgba(109,22,38,.07);
+    }
+
+    .jap-actions{
+      position:relative;
+      z-index:1;
+      display:flex;
+      gap:8px;
+    }
+
+    .jap-add{
+      flex:1;
+      border:0;
+      border-radius:13px;
+      padding:9px 10px;
+      background:#7b1b2d;
+      color:white;
+      font-size:12px;
+      font-weight:900;
+    }
+
+    .jap-total{
+      flex:1;
+      border:1px solid rgba(109,22,38,.12);
+      border-radius:13px;
+      padding:8px 9px;
+      background:#fff9ed;
+      color:#7c6153;
+      font-size:10px;
+      text-align:center;
+      line-height:1.35;
+    }
+    .jap-total strong{
+      display:block;
+      color:var(--maroon);
+      font-size:13px;
+    }
+
+    .jap-running{
+      display:none;
+      align-items:center;
+      gap:7px;
+      margin-top:10px;
+      color:#9a5b22;
+      font-size:10px;
+      font-weight:800;
+    }
+    .jap-running.show{display:flex}
+
+    .pulse{
+      width:7px;height:7px;border-radius:50%;
+      background:var(--saffron);
+      animation:pulse 1s ease infinite;
+    }
+    @keyframes pulse{
+      50%{box-shadow:0 0 0 6px rgba(217,139,43,0);transform:scale(1.1)}
+      0%,100%{box-shadow:0 0 0 0 rgba(217,139,43,.25)}
+    }
+
+    .side-card{padding:16px}
+
+    .side-title{
+      color:var(--maroon-deep);
+      font-weight:900;
+      font-size:12px;
+      margin-bottom:8px;
+    }
+
+    .side-copy{
+      color:var(--muted);
+      font-size:11px;
+      line-height:1.7;
+    }
+
+    .mantra-row{
+      margin-top:10px;
+      display:flex;
+      flex-wrap:wrap;
+      gap:5px;
+    }
+
+    .mantra-chip{
+      font-family:var(--font-devotional);
+      border:1px solid rgba(109,22,38,.10);
+      color:#805349;
+      background:#fff9ed;
+      border-radius:999px;
+      padding:5px 7px;
+      font-size:11px;
+    }
+
+    .search-overlay{
+      position:fixed;
+      inset:0;
+      z-index:100;
+      display:none;
+      place-items:center;
+      background:rgba(49,20,19,.35);
+      backdrop-filter:blur(10px);
+      -webkit-backdrop-filter:blur(10px);
+      padding:20px;
+    }
+    .search-overlay.show{display:grid}
+
+    .search-panel{
+      width:min(430px,100%);
+      border:1px solid rgba(255,255,255,.3);
+      border-radius:28px;
+      background:
+        radial-gradient(circle at 50% 0%,rgba(240,180,93,.24),transparent 45%),
+        linear-gradient(155deg,#fffaf0,#f6e7cd);
+      box-shadow:0 30px 100px rgba(48,15,17,.28);
+      padding:29px 25px 24px;
+      text-align:center;
+      position:relative;
+      overflow:hidden;
+    }
+
+    .search-panel::before{
+      content:"श्री राधा";
+      position:absolute;
+      left:50%;top:50%;
+      transform:translate(-50%,-50%) rotate(-7deg);
+      color:rgba(109,22,38,.035);
+      font-family:var(--font-devotional);
+      font-size:100px;
+      white-space:nowrap;
+      pointer-events:none;
+    }
+
+    .search-radha{
+      position:relative;
+      z-index:1;
+      font-family:var(--font-devotional);
+      color:var(--maroon);
+      font-size:38px;
+      line-height:1;
+      animation:softGlow 1.8s ease-in-out infinite;
+    }
+    @keyframes softGlow{
+      50%{text-shadow:0 0 28px rgba(217,139,43,.40);transform:scale(1.025)}
+    }
+
+    .search-stage{
+      position:relative;
+      z-index:1;
+      color:var(--maroon-deep);
+      font-weight:900;
+      margin-top:15px;
+    }
+
+    .search-sub{
+      position:relative;
+      z-index:1;
+      color:#80695d;
+      font-size:11px;
+      line-height:1.6;
+      margin-top:6px;
+    }
+
+    .search-count{
+      position:relative;
+      z-index:1;
+      width:110px;height:110px;
+      margin:19px auto 10px;
+      display:grid;
+      place-items:center;
+      border-radius:50%;
+      border:1px solid rgba(109,22,38,.14);
+      box-shadow:
+        inset 0 0 0 9px rgba(217,139,43,.07),
+        inset 0 0 0 18px rgba(109,22,38,.03);
+      color:var(--maroon);
+      font-size:28px;
+      font-family:"Glegoo",var(--font-ui);
+      font-weight:700;
+      background:rgba(255,255,255,.45);
+    }
+
+    .search-time{
+      position:relative;
+      z-index:1;
+      color:#9b8173;
+      font-size:10px;
+    }
+
+    .toast{
+      position:fixed;
+      right:18px;
+      bottom:18px;
+      z-index:120;
+      max-width:360px;
+      padding:11px 13px;
+      border-radius:14px;
+      color:#fff;
+      background:#541726;
+      box-shadow:0 15px 40px rgba(62,18,27,.25);
+      font-size:12px;
+      opacity:0;
+      transform:translateY(10px);
+      pointer-events:none;
+      transition:.25s ease;
+    }
+    .toast.show{opacity:1;transform:none}
+
+    footer{
+      text-align:center;
+      color:#927e73;
+      font-size:10px;
+      line-height:1.65;
+      padding:30px 16px 0;
+    }
+
+    @media (max-width:900px){
+      .layout{grid-template-columns:1fr}
+      .side{
+        position:static;
+        display:grid;
+        grid-template-columns:1fr 1fr;
+      }
+      .jap-card{grid-row:span 1}
+      .top-mantra{display:none}
+      .topbar{grid-template-columns:1fr auto}
+    }
+
+    @media (max-width:620px){
+      .shell{width:min(100% - 14px,1180px);padding-top:8px}
+      .topbar{top:7px;border-radius:18px}
+      .brand-sub{display:none}
+      .ghost-btn{padding:9px 10px}
+      .hero{min-height:300px;padding:52px 12px 28px}
+      .hero-radha{font-size:57px}
+      .hero h1{font-size:27px}
+      .hero p{font-size:13px}
+      .chat-card{border-radius:22px}
+      .chat-head{padding:14px}
+      .evidence-legend{display:none}
+      .messages{padding:13px;gap:13px}
+      .bubble{max-width:92%}
+      .message.ai .bubble{width:calc(100% - 42px)}
+      .source-grid{grid-template-columns:1fr}
+      .composer-wrap{padding:9px}
+      .composer{gap:7px}
+      .ask-btn{min-width:78px}
+      .side{grid-template-columns:1fr}
+      .side-card:not(.jap-card){display:none}
+      .jap-card{order:-1}
+      .query-label{display:none}
+    }
   </style>
 </head>
+
 <body>
-<div class="wrap">
-  <div class="hero">
-    <h1>🪷 Bhajan Marg AI</h1>
-    <div class="sub">Search the indexed satsang corpus on every question. AI explanations are not Premanand Ji.</div>
+  <div class="aura" id="aura" aria-hidden="true"></div>
+
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">राधा</div>
+        <div class="brand-text">
+          <div class="brand-title">Bhajan Marg AI</div>
+          <div class="brand-sub">सत्संग खोज • प्रमाणित स्रोत • शांत चिंतन</div>
+        </div>
+      </div>
+
+      <div class="top-mantra">राधे राधे • श्री हरिवंश</div>
+
+      <div class="top-actions">
+        <button class="ghost-btn" id="newChatBtn" type="button">नया संवाद</button>
+      </div>
+    </header>
+
+    <section class="hero">
+      <div class="hero-inner">
+        <div class="hero-radha">श्री राधा</div>
+        <h1>आपका प्रश्न, पूरे सत्संग में खोज</h1>
+        <p>
+          आपका प्रश्न Bhajan Marg के उपलब्ध सत्संगों में खोजा जाता है।
+          जहाँ साफ़ प्रमाण मिलता है, वहीं प्रेमानंद जी की शिक्षा के रूप में दिखाया जाता है।
+          बाकी समझ AI की ओर से अलग लिखी जाती है।
+        </p>
+        <div class="hero-divider"><span></span></div>
+      </div>
+    </section>
+
+    <main class="layout">
+      <section class="chat-card">
+        <div class="chat-head">
+          <div>
+            <div class="chat-head-title">सत्संग संवाद</div>
+            
+          </div>
+          <div class="evidence-legend">
+            <span class="tiny-chip">सीधा प्रमाण</span>
+            <span class="tiny-chip">संबंधित शिक्षा</span>
+            <span class="tiny-chip">प्रमाण नहीं</span>
+          </div>
+        </div>
+
+        <div class="messages" id="messages"></div>
+
+        <div class="composer-wrap">
+          <form class="composer" id="chatForm">
+            <textarea
+              id="question"
+              rows="1"
+              maxlength="1200"
+              placeholder="मन की बात या आध्यात्मिक प्रश्न लिखें…"
+              aria-label="अपना प्रश्न लिखें"
+            ></textarea>
+            <button class="ask-btn" id="askBtn" type="submit">खोजें</button>
+          </form>
+          <div class="composer-foot">
+            <span class="status" id="status">सत्संग-स्रोतों से प्रमाण सहित उत्तर</span>
+            <span>Enter ↵ • Shift+Enter नई पंक्ति</span>
+          </div>
+        </div>
+      </section>
+
+      <aside class="side">
+        <section class="jap-card">
+          <div class="jap-label" id="japLabel">राधा नाम जप</div>
+          <div class="jap-number" id="japCount">0</div>
+          <div class="jap-caption">
+            उत्तर खोजते समय गिनती अपने-आप बढ़ती है। यही गिनती आगे के सवालों में भी बनी रहती है।
+          </div>
+
+          <div class="jap-selector">
+            <label for="japNameSelect">कौन-सा नाम जप करना है?</label>
+            <select id="japNameSelect">
+              <option value="राधा">राधा</option>
+              <option value="राधे राधे">राधे राधे</option>
+              <option value="श्री हरिवंश">श्री हरिवंश</option>
+              <option value="राम">राम</option>
+              <option value="सीता राम">सीता राम</option>
+              <option value="सांब सदाशिव">सांब सदाशिव</option>
+              <option value="कृष्ण">कृष्ण</option>
+              <option value="हरि">हरि</option>
+              <option value="__custom__">अपना नाम लिखें…</option>
+            </select>
+
+            <div class="custom-jap-row" id="customJapRow">
+              <input
+                id="customJapName"
+                type="text"
+                maxlength="40"
+                placeholder="जैसे: श्री राधावल्लभ"
+                aria-label="अपना नाम जप लिखें"
+              />
+              <button id="saveCustomJap" type="button">रखें</button>
+            </div>
+          </div>
+
+          <div class="mala" id="mala" aria-hidden="true"></div>
+
+          <div class="jap-actions">
+            <button class="jap-add" id="japAdd" type="button">राधा +1</button>
+            <div class="jap-total">
+              कुल गिनती
+              <strong id="japTotal">0</strong>
+            </div>
+          </div>
+
+          <div class="jap-running" id="japRunning">
+            <span class="pulse"></span>
+            उत्तर खोजते समय नाम जप की गिनती चल रही है
+          </div>
+
+          <div class="jap-simple-note">
+            चाहें तो ऊपर से नाम चुनें या अपना नाम लिखें। 108 बिंदु एक पूरी माला दिखाते हैं।
+          </div>
+        </section>
+
+        <section class="side-card">
+          <div class="side-title">ज़रूरी बात</div>
+          <div class="side-copy">
+            यह प्रेमानंद जी नहीं है और उनकी ओर से बोलने का दावा नहीं करता।
+            “सीधी शिक्षा” उपलब्ध लिखित अंश से ली जाती है। बाकी समझ AI की ओर से अलग लिखी जाती है।
+          </div>
+        </section>
+      </aside>
+    </main>
+
+    <footer>
+      Bhajan Marg AI • Bhajan Marg के सत्संगों में खोज करने वाला स्वतंत्र AI माध्यम •
+      अपने-आप बने लिखित अंश में गलती हो सकती है — सही संदर्भ के लिए मूल वीडियो देखें।
+    </footer>
   </div>
-  <button id="new-chat" type="button" style="padding:10px 16px;margin-bottom:14px">नई बातचीत</button>
-  <div id="chat" class="chat"></div>
-  <form id="form">
-    <textarea aria-label="अपना प्रश्न पूछें" id="q" placeholder="अपना प्रश्न पूछें..." required></textarea>
-    <button id="ask">Ask</button>
-  </form>
-  <div id="status" class="status" role="status" aria-live="polite"></div>
-</div>
-<script>window.BHAJAN_API_BASE = "";</script>
-<script src="/assets/app.js"></script>
+
+  <div class="search-overlay" id="searchOverlay" role="status" aria-live="polite">
+    <div class="search-panel">
+      <div class="search-radha" id="searchJapName">राधा</div>
+      <div class="search-stage" id="searchStage">सत्संग में खोज रहे हैं…</div>
+      <div class="search-sub">उत्तर खोजते समय नाम जप की गिनती चलती रहेगी।</div>
+      <div class="search-count" id="overlayCount">0</div>
+      <div class="search-time" id="searchTime">0 सेकंड</div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+<script src="./app.js"></script>
+
 </body>
 </html>
