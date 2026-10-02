@@ -62,9 +62,11 @@ def merge_rolling_caption(previous: str, current: str) -> str:
             break
     if overlap == 0:
         return normalize_text(current)
-    current_words = normalize_text(current).split()
-    # Token counts usually align with whitespace words for these captions.
-    return " ".join(current_words[overlap:]).strip() or ""
+    # A token count is not a whitespace-word count: क्या-क्या has two
+    # tokens but one whitespace word. Slice at the actual token offset.
+    normalized = normalize_text(current)
+    spans = list(uregex.finditer(r"[\p{L}\p{M}\p{N}]+", normalized))
+    return normalized[spans[overlap - 1].end():].lstrip(" \t\r\n।॥.!?,;:")
 
 
 def ms_to_clock(ms: int) -> str:

@@ -16,7 +16,7 @@
     form{position:sticky;bottom:16px;margin-top:24px;background:#fff;border:1px solid #dfd2bf;border-radius:18px;padding:10px;display:flex;gap:8px;box-shadow:0 12px 40px rgba(40,20,0,.12)}
     textarea{flex:1;border:0;outline:0;resize:none;padding:12px;font:inherit;min-height:50px;background:transparent}
     button{border:0;background:#3b2818;color:#fff;border-radius:12px;padding:0 20px;font-weight:700;cursor:pointer}
-    .status{text-align:center;font-size:13px;opacity:.65;margin-top:8px}.small{font-size:12px;opacity:.68}
+    button:disabled{opacity:.6;cursor:not-allowed}.status{text-align:center;font-size:13px;opacity:.65;margin-top:8px}.small{font-size:12px;opacity:.68}
   </style>
 </head>
 <body>
@@ -25,57 +25,15 @@
     <h1>🪷 Bhajan Marg AI</h1>
     <div class="sub">Search the indexed satsang corpus on every question. AI explanations are not Premanand Ji.</div>
   </div>
+  <button id="new-chat" type="button" style="padding:10px 16px;margin-bottom:14px">नई बातचीत</button>
   <div id="chat" class="chat"></div>
   <form id="form">
-    <textarea id="q" placeholder="अपना प्रश्न पूछें..." required></textarea>
-    <button>Ask</button>
+    <textarea aria-label="अपना प्रश्न पूछें" id="q" placeholder="अपना प्रश्न पूछें..." required></textarea>
+    <button id="ask">Ask</button>
   </form>
-  <div id="status" class="status"></div>
+  <div id="status" class="status" role="status" aria-live="polite"></div>
 </div>
-<script>
-let conversationId = localStorage.getItem("bm_conversation") || null;
-const chat = document.getElementById("chat");
-const form = document.getElementById("form");
-const q = document.getElementById("q");
-const status = document.getElementById("status");
-
-function esc(s){const d=document.createElement("div");d.textContent=s||"";return d.innerHTML}
-function badge(level){
-  if(level==="direct") return "Strong / direct corpus evidence";
-  if(level==="related") return "Related teaching — not a direct answer";
-  return "No sufficient Bhajan Marg citation found";
-}
-function addUser(t){chat.insertAdjacentHTML("beforeend",`<div class="msg user">${esc(t)}</div>`)}
-function addAI(data){
-  let sources="";
-  for(const s of data.sources||[]){
-    sources += `<div class="source">
-      <div><a target="_blank" href="${esc(s.url)}">▶ ${esc(s.title)}</a></div>
-      <div class="small">${esc(s.start)}–${esc(s.end)} · relevance ${esc(String(s.relevance))}</div>
-      <div class="excerpt">“${esc(s.transcript_excerpt)}”</div>
-      <div class="small">Transcript-derived excerpt; auto-captions may contain recognition errors.</div>
-    </div>`;
-  }
-  chat.insertAdjacentHTML("beforeend",`<div class="msg ai">
-    <div class="badge">${esc(badge(data.evidence_level))}</div>
-    <div>${esc(data.answer)}</div>${sources}
-  </div>`);
-  window.scrollTo({top:document.body.scrollHeight,behavior:"smooth"});
-}
-form.addEventListener("submit", async e=>{
-  e.preventDefault(); const text=q.value.trim(); if(!text)return;
-  addUser(text); q.value=""; status.textContent="Searching the corpus again…";
-  try{
-    const r=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({question:text,conversation_id:conversationId})});
-    if(!r.ok) throw new Error(await r.text());
-    const data=await r.json();
-    conversationId=data.conversation_id;
-    localStorage.setItem("bm_conversation",conversationId);
-    addAI(data);
-    status.textContent=`Search query: ${data.standalone_query}`;
-  }catch(err){status.textContent="Error: "+err.message}
-});
-</script>
+<script>window.BHAJAN_API_BASE = "";</script>
+<script src="/assets/app.js"></script>
 </body>
 </html>

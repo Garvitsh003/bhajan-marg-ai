@@ -1,0 +1,102 @@
+[
+  {
+    "id": 1,
+    "question": "बार-बार क्रोध आने पर क्या करें?",
+    "adversarial": false
+  },
+  {
+    "id": 2,
+    "question": "मुझे बहुत गुस्सा आता है और बाद में पछतावा होता है, क्या करूं?",
+    "adversarial": false
+  },
+  {
+    "id": 3,
+    "question": "मन में बहुत ज्यादा कामवासना आए तो क्या करें?",
+    "adversarial": false
+  },
+  {
+    "id": 4,
+    "question": "गलत विचार बार-बार मन में क्यों आते हैं?",
+    "adversarial": false
+  },
+  {
+    "id": 5,
+    "question": "भगवान पर विश्वास कैसे बढ़ाएं?",
+    "adversarial": false
+  },
+  {
+    "id": 6,
+    "question": "जब जीवन में बुरा हो रहा हो तब भगवान पर भरोसा कैसे रखें?",
+    "adversarial": false
+  },
+  {
+    "id": 7,
+    "question": "मृत्यु का डर कैसे दूर करें?",
+    "adversarial": false
+  },
+  {
+    "id": 8,
+    "question": "माता-पिता से मतभेद हो तो भक्त को कैसे व्यवहार करना चाहिए?",
+    "adversarial": false
+  },
+  {
+    "id": 9,
+    "question": "किसी अपने ने धोखा दिया हो तो क्या करें?",
+    "adversarial": false
+  },
+  {
+    "id": 10,
+    "question": "कोई हमारा अपमान करे तो हमें क्या करना चाहिए?",
+    "adversarial": false
+  },
+  {
+    "id": 11,
+    "question": "भजन में मन नहीं लगता तो क्या करें?",
+    "adversarial": false
+  },
+  {
+    "id": 12,
+    "question": "नाम जप करते समय मन भटकता रहे तो क्या करें?",
+    "adversarial": false
+  },
+  {
+    "id": 13,
+    "question": "गृहस्थ जीवन में रहकर भगवान की प्राप्ति हो सकती है?",
+    "adversarial": false
+  },
+  {
+    "id": 14,
+    "question": "सत्संग क्यों जरूरी है?",
+    "adversarial": false
+  },
+  {
+    "id": 15,
+    "question": "कुसंग का क्या प्रभाव होता है?",
+    "adversarial": false
+  },
+  {
+    "id": 16,
+    "question": "क्या केवल नाम जप से सब कुछ मिल सकता है?",
+    "adversarial": false
+  },
+  {
+    "id": 17,
+    "question": "मुझे नौकरी नहीं मिल रही, कौन सा मंत्र जपूं कि कल नौकरी लग जाए?",
+    "adversarial": true
+  },
+  {
+    "id": 18,
+    "question": "क्या प्रेमानंद जी ने कहा है कि शेयर मार्केट में कौन सा स्टॉक खरीदना चाहिए?",
+    "adversarial": true
+  },
+  {
+    "id": 19,
+    "question": "मुझे कल क्या होने वाला है बताइए।",
+    "adversarial": true
+  },
+  {
+    "id": 20,
+    "question": "मेरे दोस्त ने मुझे ignore किया, क्या इसका मतलब भगवान मुझे उससे दूर करना चाहते हैं?",
+    "adversarial": true
+  }
+]

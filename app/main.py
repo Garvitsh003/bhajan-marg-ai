@@ -1,17 +1,20 @@
 import logging
 import os
+import time
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import BackgroundTasks, FastAPI, Header, HTTPException
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field, field_validator
 
 from . import db
 from .config import settings
-from .llm import generate_answer, rewrite_query
+from .llm import generate_answer_result, rewrite_query
+from .budget import deadline, request_id
 from .retrieval import retrieve
 from .search_backend import ensure_collection
 
@@ -43,11 +46,12 @@ async def lifespan(app: FastAPI):
         stop_scheduler()
 
 
-app = FastAPI(
+api = FastAPI(
     title="Bhajan Marg AI",
     version="1.0.0",
     lifespan=lifespan,
 )
+api.mount('/assets', StaticFiles(directory=Path(__file__).parent / 'static'), name='assets')
 
 
 raw_origins = os.getenv(
@@ -56,18 +60,17 @@ raw_origins = os.getenv(
 )
 allow_origins = [x.strip() for x in raw_origins.split(",") if x.strip()]
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=allow_origins or ["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=5000)
     conversation_id: str | None = None
+
+    @field_validator('question')
+    @classmethod
+    def nonblank_question(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError('Question must not be blank')
+        return value
 
 
 class UpdateRequest(BaseModel):
@@ -75,12 +78,12 @@ class UpdateRequest(BaseModel):
     force: bool = False
 
 
-@app.get("/")
+@api.get("/")
 def ui():
     return FileResponse(Path(__file__).parent / "static" / "index.html")
 
 
-@app.get("/api/health")
+@api.get("/api/health")
 def health():
     return {
         "ok": True,
@@ -94,29 +97,56 @@ def health():
     }
 
 
-@app.get("/api/stats")
+@api.get("/api/stats")
 def corpus_stats():
     return db.stats()
 
 
-@app.post("/api/chat")
-def chat(req: ChatRequest):
+@api.post("/api/chat")
+def chat(req: ChatRequest, request: Request):
+    trace_id = str(uuid.uuid4())
+    trace_token = request_id.set(trace_id)
+    deadline_token = deadline.set(time.monotonic() + settings.chat_timeout_seconds)
+    started = time.monotonic()
+    try:
+        return _chat(req, trace_id, started)
+    except Exception as exc:
+        logging.getLogger(__name__).error(
+            'request=%s chat_failed error_type=%s elapsed_ms=%d',
+            trace_id, type(exc).__name__, (time.monotonic()-started)*1000)
+        timeout = isinstance(exc, TimeoutError) or 'timeout' in type(exc).__name__.lower()
+        return JSONResponse(status_code=504 if timeout else 503,
+            headers={'X-Request-ID':trace_id}, content={'error':{
+                'code':'UPSTREAM_TIMEOUT' if timeout else 'CHAT_UNAVAILABLE',
+                'message':'उत्तर तैयार नहीं हो पाया। कुछ देर बाद दोबारा प्रयास करें।',
+                'request_id':trace_id}})
+    finally:
+        deadline.reset(deadline_token)
+        request_id.reset(trace_token)
+
+
+def _chat(req: ChatRequest, trace_id: str, started: float):
     conversation_id = req.conversation_id or str(uuid.uuid4())
     question = req.question.strip()
 
     history = db.get_messages(conversation_id, limit=8)
+    log = logging.getLogger(__name__)
+    log.info('request=%s phase=rewrite', trace_id)
     standalone_query = rewrite_query(question, history)
 
     # Fresh corpus search on EVERY user turn, including follow-ups.
+    log.info('request=%s phase=retrieval', trace_id)
     evidence = retrieve(standalone_query)
 
     selected_sources = evidence["sources"]
-    answer = generate_answer(
+    log.info('request=%s phase=answer', trace_id)
+    generated = generate_answer_result(
         question=question,
         history=history,
         evidence_level=evidence["level"],
         selected_sources=selected_sources,
     )
+    answer = generated['answer']
 
     db.add_message(conversation_id, "user", question)
     db.add_message(
@@ -139,18 +169,30 @@ def chat(req: ChatRequest):
 
     # Do not expose expanded context twice.
     public_sources = [
-        {k: v for k, v in s.items() if k != "context_text"}
+        {k: v for k, v in s.items() if k not in ("context_text", 'caption_segments')}
         for s in selected_sources
     ]
+    for quote in generated['quotes']:
+        if quote.get('url'):
+            card = public_sources[quote['source_index']]
+            card.setdefault('answer_start', quote['start'])
+            card.setdefault('answer_url', quote['url'])
 
-    return {
+    result = {
         "conversation_id": conversation_id,
         "standalone_query": standalone_query,
         "evidence_level": evidence["level"],
         "evidence_reason": evidence.get("reason"),
         "answer": answer,
         "sources": public_sources,
+        'request_id':trace_id,
+        'elapsed_ms':round((time.monotonic()-started)*1000),
+        **{key:generated[key] for key in (
+            'answer_status','extraction_status','interpretation_status','quotes','claims')},
     }
+    log.info('request=%s completed status=%s elapsed_ms=%d',
+             trace_id, generated['answer_status'], result['elapsed_ms'])
+    return JSONResponse(result, headers={'X-Request-ID':trace_id})
 
 
 def _check_admin(token: str | None):
@@ -158,7 +200,7 @@ def _check_admin(token: str | None):
         raise HTTPException(status_code=401, detail="Invalid admin token")
 
 
-@app.post("/api/admin/update")
+@api.post("/api/admin/update")
 def update(
     req: UpdateRequest,
     background_tasks: BackgroundTasks,
@@ -181,3 +223,9 @@ def update(
         mode="manual-update",
     )
     return {"accepted": True, "latest": req.latest, "force": req.force}
+
+
+# CORS must also cover unhandled 500 responses, not just successful routes.
+app = CORSMiddleware(api, allow_origins=allow_origins or ['*'],
+    allow_credentials=False, allow_methods=['*'], allow_headers=['*'],
+    expose_headers=['X-Request-ID'])
