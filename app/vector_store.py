@@ -102,6 +102,7 @@ def index_chunks(video: dict[str, Any], chunks: list[dict[str, Any]]) -> list[di
             "segment_start": chunk["segment_start"],
             "segment_end": chunk["segment_end"],
             "text": chunk["text"],
+            "caption_segments": chunk.get('caption_segments', []),
         }
         points.append(
             models.PointStruct(

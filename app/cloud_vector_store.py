@@ -8,6 +8,7 @@ from qdrant_client import QdrantClient, models
 
 from .cloud_llm import gemini_chat
 from .config import settings
+from .budget import remaining_timeout
 
 
 DENSE_VECTOR = "dense_vector"
@@ -46,7 +47,7 @@ def client() -> QdrantClient:
         url=url,
         api_key=api_key,
         cloud_inference=True,
-        timeout=45,
+        timeout=settings.qdrant_timeout_seconds,
     )
 
 
@@ -78,8 +79,6 @@ def hybrid_search(
     query: str,
     limit: int | None = None,
 ) -> list[dict[str, Any]]:
-    ensure_collection()
-
     fused_limit = int(
         limit
         or getattr(settings, "fused_candidates", 50)
@@ -120,6 +119,7 @@ def hybrid_search(
         ),
         limit=fused_limit,
         with_payload=True,
+        timeout=max(1, int(remaining_timeout(settings.qdrant_timeout_seconds))),
     ).points
 
     items: list[dict[str, Any]] = []

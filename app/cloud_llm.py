@@ -1,5 +1,11 @@
 import os
+import logging
+import time
 from functools import lru_cache
+from .budget import remaining_timeout, request_id
+from .config import settings
+
+log = logging.getLogger(__name__)
 
 
 def _provider_model() -> str:
@@ -14,7 +20,11 @@ def _client():
 
     from google import genai
 
-    return genai.Client(api_key=api_key)
+    from google.genai import types
+    return genai.Client(api_key=api_key, http_options=types.HttpOptions(
+        timeout=int(settings.llm_timeout_seconds * 1000),
+        retry_options=types.HttpRetryOptions(attempts=1),
+    ))
 
 
 def gemini_chat(
@@ -25,12 +35,8 @@ def gemini_chat(
     max_output_tokens: int | None = None,
     timeout: int = 300,
 ) -> str:
-    """Gemini adapter with the same conceptual interface as ollama_chat.
-
-    timeout is accepted for call-site compatibility. The Google GenAI SDK
-    manages its own HTTP transport timeouts.
-    """
-    del timeout
+    """Bound the SDK transport timeout in milliseconds for every call."""
+    seconds = remaining_timeout(min(timeout, settings.llm_timeout_seconds))
 
     from google.genai import types
 
@@ -56,6 +62,8 @@ def gemini_chat(
     config_kwargs = {
         "temperature": max(0.0, min(2.0, float(temperature))),
         "max_output_tokens": int(max_output_tokens or 700),
+        "http_options": types.HttpOptions(timeout=max(1, int(seconds * 1000)),
+            retry_options=types.HttpRetryOptions(attempts=1)),
     }
 
     if system_parts:
@@ -64,11 +72,15 @@ def gemini_chat(
     if json_mode:
         config_kwargs["response_mime_type"] = "application/json"
 
-    response = _client().models.generate_content(
-        model=_provider_model(),
-        contents=prompt,
-        config=types.GenerateContentConfig(**config_kwargs),
-    )
+    started = time.monotonic()
+    try:
+        response = _client().models.generate_content(
+            model=_provider_model(), contents=prompt,
+            config=types.GenerateContentConfig(**config_kwargs),
+        )
+    finally:
+        log.info("request=%s phase=gemini elapsed_ms=%d", request_id.get(),
+                 (time.monotonic() - started) * 1000)
 
     text = getattr(response, "text", None)
     if not text:

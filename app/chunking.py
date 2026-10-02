@@ -29,6 +29,7 @@ def chunk_transcript(
                 "segment_start": buf[0]["segment_id"],
                 "segment_end": buf[-1]["segment_id"],
                 "text": text,
+                "caption_segments": [{k:s[k] for k in ('start_ms','end_ms','text')} for s in buf],
             })
         buf = buf[-overlap_segments:] if overlap_segments else []
 
@@ -54,5 +55,6 @@ def chunk_transcript(
                 "segment_start": buf[0]["segment_id"],
                 "segment_end": buf[-1]["segment_id"],
                 "text": tail,
+                "caption_segments": [{k:s[k] for k in ('start_ms','end_ms','text')} for s in buf],
             })
     return chunks

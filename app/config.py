@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     qdrant_dense_model: str = "sentence-transformers/all-minilm-l6-v2"
     qdrant_bm25_model: str = "qdrant/bm25"
     cors_origins: str = "http://localhost:8000"
+    llm_timeout_seconds: float = 35
+    chat_timeout_seconds: float = 180
+    qdrant_timeout_seconds: float = 30
+    validate_answer_claims: bool = True
 
     qdrant_url: str = "http://localhost:6333"
     qdrant_collection: str = "bhajan_marg_chunks"

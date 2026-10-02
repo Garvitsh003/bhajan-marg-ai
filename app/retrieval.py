@@ -486,6 +486,7 @@ def retrieve(
                 "context_text": source[
                     "context_text"
                 ],
+                'caption_segments':source.get('caption_segments', []),
             }
         )
 
