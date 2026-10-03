@@ -11,6 +11,39 @@ from .config import settings
 from .text import merge_rolling_caption, normalize_text
 
 
+_WHISPER_MODEL = None
+
+
+def _get_whisper_model():
+    global _WHISPER_MODEL
+
+    if _WHISPER_MODEL is not None:
+        return _WHISPER_MODEL
+
+    try:
+        from faster_whisper import WhisperModel
+    except ImportError:
+        raise RuntimeError(
+            "WHISPER_FALLBACK=true but faster-whisper is not installed. "
+            "Install requirements-whisper.txt"
+        )
+
+    print(
+        "Loading Whisper model:",
+        settings.whisper_model,
+        f"device={settings.whisper_device}",
+        f"compute={settings.whisper_compute_type}",
+    )
+
+    _WHISPER_MODEL = WhisperModel(
+        settings.whisper_model,
+        device=settings.whisper_device,
+        compute_type=settings.whisper_compute_type,
+    )
+
+    return _WHISPER_MODEL
+
+
 def _ydl_common() -> dict[str, Any]:
     opts: dict[str, Any] = {
         "quiet": True,
@@ -140,52 +173,50 @@ def whisper_transcribe(video: dict[str, Any]) -> tuple[list[dict], str] | tuple[
     if not settings.whisper_fallback:
         return None, None
 
-    try:
-        from faster_whisper import WhisperModel
-    except ImportError:
-        raise RuntimeError(
-            "WHISPER_FALLBACK=true but faster-whisper is not installed. "
-            "Install requirements-whisper.txt"
-        )
-
     vid = video["video_id"]
     outdir = Path(settings.temp_dir) / f"{vid}_audio"
+
     shutil.rmtree(outdir, ignore_errors=True)
     outdir.mkdir(parents=True, exist_ok=True)
 
-    opts = _ydl_common()
-    opts.update({
-        "format": "bestaudio/best",
-        "noplaylist": True,
-        "outtmpl": str(outdir / f"{vid}.%(ext)s"),
-        "postprocessors": [{
-            "key": "FFmpegExtractAudio",
-            "preferredcodec": "mp3",
-            "preferredquality": "64",
-        }],
-    })
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        ydl.download([video["url"]])
+    try:
+        opts = _ydl_common()
+        opts.update({
+            "format": "bestaudio/best",
+            "noplaylist": True,
+            "outtmpl": str(outdir / f"{vid}.%(ext)s"),
+            "postprocessors": [{
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "mp3",
+                "preferredquality": "64",
+            }],
+        })
 
-    audio = outdir / f"{vid}.mp3"
-    if not audio.exists():
-        return None, None
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            ydl.download([video["url"]])
 
-    model = WhisperModel(
-        settings.whisper_model,
-        device=settings.whisper_device,
-        compute_type=settings.whisper_compute_type,
-    )
-    result, _ = model.transcribe(
-        str(audio),
-        language="hi",
-        vad_filter=True,
-        beam_size=5,
-    )
-    segments = []
-    for seg in result:
-        text = normalize_text(seg.text)
-        if text:
+        audio = outdir / f"{vid}.mp3"
+
+        if not audio.exists():
+            return None, None
+
+        model = _get_whisper_model()
+
+        result, _ = model.transcribe(
+            str(audio),
+            language="hi",
+            vad_filter=True,
+            beam_size=5,
+        )
+
+        segments = []
+
+        for seg in result:
+            text = normalize_text(seg.text)
+
+            if not text:
+                continue
+
             segments.append({
                 "segment_id": len(segments),
                 "start_ms": int(seg.start * 1000),
@@ -193,8 +224,15 @@ def whisper_transcribe(video: dict[str, Any]) -> tuple[list[dict], str] | tuple[
                 "raw_text": text,
                 "text": text,
             })
-    shutil.rmtree(outdir, ignore_errors=True)
-    return (segments, "faster_whisper") if segments else (None, None)
+
+        return (
+            (segments, "faster_whisper")
+            if segments
+            else (None, None)
+        )
+
+    finally:
+        shutil.rmtree(outdir, ignore_errors=True)
 
 
 def save_transcript(video: dict, segments: list[dict], source: str) -> tuple[str, str]:

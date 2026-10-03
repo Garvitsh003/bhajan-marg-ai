@@ -1,260 +1,127 @@
 (() => {
   "use strict";
 
-  const configured = typeof window.BHAJAN_API_BASE === "string";
-  const API_BASE = (
-    window.BHAJAN_API_BASE ||
-    (location.hostname.includes("onrender.com") ? "" : "https://bhajan-marg-ai.onrender.com")
+  const API_BASE = String(
+    window.BHAJAN_API_BASE !== undefined
+      ? window.BHAJAN_API_BASE
+      : (location.hostname.includes("onrender.com") ? "" : "https://bhajan-marg-ai.onrender.com")
   ).replace(/\/$/, "");
 
-  const NAMES = [
-    "राधा","श्री राधा","राधे राधे","राधावल्लभ","श्री हरिवंश",
-    "राम","श्री राम","सीता राम","हरि","कृष्ण","श्याम",
-    "सांब सदाशिव","महादेव","शिव शिव","राधा नाम"
-  ];
-
-  const STAGES = [
-    "सत्संग में खोज रहे हैं…",
-    "संबंधित वचन चुन रहे हैं…",
-    "स्रोत जाँच रहे हैं…",
-    "उत्तर को स्रोत से मिला रहे हैं…"
-  ];
+  // V1 product data is owned by the FastAPI backend + PostgreSQL.
+  // On Vercel the included rewrite keeps /api same-origin, which lets the
+  // backend use an HttpOnly session cookie without exposing auth tokens to JS.
+  async function api(path, { method = "GET", body = undefined, signal = undefined } = {}) {
+    const response = await fetch(`${API_BASE}${path}`, {
+      method,
+      credentials: "include",
+      signal,
+      headers: body === undefined ? {} : { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const detail = data?.detail || data?.error?.message || `Request failed (${response.status})`;
+      const error = new Error(typeof detail === "string" ? detail : "Request failed");
+      error.status = response.status;
+      throw error;
+    }
+    return data;
+  }
 
   const $ = (id) => document.getElementById(id);
+  const els = {
+    sidebar: $("sidebar"),
+    drawerBackdrop: $("drawerBackdrop"),
+    mobileMenu: $("mobileMenu"),
+    newChatBtn: $("newChatBtn"),
+    chatSearch: $("chatSearch"),
+    conversationList: $("conversationList"),
+    contextTitle: $("contextTitle"),
+    messages: $("messages"),
+    messagesWrap: $("messagesWrap"),
+    chatForm: $("chatForm"),
+    question: $("question"),
+    askBtn: $("askBtn"),
+    status: $("status"),
+    languageSelect: $("languageSelect"),
+    themeToggle: $("themeToggle"),
+    authButton: $("authButton"),
+    profileButton: $("profileButton"),
+    profileAvatar: $("profileAvatar"),
+    profileName: $("profileName"),
+    profileEmail: $("profileEmail"),
+    searchOverlay: $("searchOverlay"),
+    searchTime: $("searchTime"),
+    searchStage: $("searchStage"),
+    searchJapName: $("searchJapName"),
+    overlayCount: $("overlayCount"),
+    authModal: $("authModal"),
+    authTitle: $("authTitle"),
+    authName: $("authName"),
+    authEmail: $("authEmail"),
+    authPassword: $("authPassword"),
+    nameField: $("nameField"),
+    emailAuthSubmit: $("emailAuthSubmit"),
+    toggleAuthMode: $("toggleAuthMode"),
+    forgotPassword: $("forgotPassword"),
+    googleSignIn: $("googleSignIn"),
+    authStatus: $("authStatus"),
+    profileModal: $("profileModal"),
+    profileNameInput: $("profileNameInput"),
+    profileLanguage: $("profileLanguage"),
+    profileTheme: $("profileTheme"),
+    saveProfile: $("saveProfile"),
+    logoutBtn: $("logoutBtn"),
+    feedbackModal: $("feedbackModal"),
+    feedbackComment: $("feedbackComment"),
+    submitFeedback: $("submitFeedback"),
+    resetModal: $("resetModal"),
+    newPassword: $("newPassword"),
+    saveNewPassword: $("saveNewPassword"),
+    toast: $("toast"),
+    japNameSelect: $("japNameSelect"),
+    japAdd: $("japAdd"),
+    japLabel: $("japLabel"),
+    japCount: $("japCount"),
+    customJapRow: $("customJapRow"),
+    customJapName: $("customJapName"),
+    saveCustomJap: $("saveCustomJap"),
+    mala: $("mala"),
+  };
 
-  const messages = $("messages");
-  const form = $("chatForm");
-  const q = $("question");
-  const askBtn = $("askBtn");
-  const status = $("status");
-  const overlay = $("searchOverlay");
-  const overlayCount = $("overlayCount");
-  const searchTime = $("searchTime");
-  const searchStage = $("searchStage");
-  const searchJapName = $("searchJapName");
-  const japCountEl = $("japCount");
-  const japTotalEl = $("japTotal");
-  const japRunning = $("japRunning");
-  const newChatBtn = $("newChatBtn");
-  const japAdd = $("japAdd");
-  const japLabel = $("japLabel");
-  const japNameSelect = $("japNameSelect");
-  const customJapRow = $("customJapRow");
-  const customJapName = $("customJapName");
-  const saveCustomJap = $("saveCustomJap");
-  const toast = $("toast");
+  const state = {
+    session: null,
+    user: null,
+    profile: null,
+    conversations: [],
+    activeConversationId: null,
+    activeConversationTitle: "New chat",
+    messages: [],
+    authMode: "signin",
+    busy: false,
+    feedbackTarget: null,
+    theme: localStorage.getItem("bm_theme") || "system",
+    language: localStorage.getItem("bm_language") || "auto",
+    guestId: localStorage.getItem("bm_guest_id") || crypto.randomUUID(),
+    selectedJapName: localStorage.getItem("bm_jap_name") || "राधा",
+    japCount: 0,
+    searchTimers: [],
+  };
+  localStorage.setItem("bm_guest_id", state.guestId);
 
-  let busy = false;
-  let conversationId = storageGet("bm_conversation") || "";
-  let currentStorageKey = conversationId || "draft";
-  let selectedJapName = storageGet("bm_jap_name") || "राधा";
-  let conversationJap = readNumber(japConversationKey(currentStorageKey, selectedJapName));
-  let totalJap = readNumber(japTotalKey(selectedJapName));
+  const STAGES = [
+    "संबंधित वचन खोज रहे हैं…",
+    "स्रोतों की प्रासंगिकता जाँच रहे हैं…",
+    "सीधे उत्तर का अंश चुन रहे हैं…",
+    "उत्तर को स्रोतों से मिला रहे हैं…",
+  ];
 
-  let japTimer = null;
-  let elapsedTimer = null;
-  let stageTimer = null;
-  let requestStarted = 0;
-  let stageIndex = 0;
-
-  function storageGet(key){
-    try { return localStorage.getItem(key); } catch (_) { return null; }
+  function safeText(value) {
+    return String(value ?? "");
   }
 
-  function storageSet(key, value){
-    try { localStorage.setItem(key, value); } catch (_) {}
-  }
-
-  function storageRemove(key){
-    try { localStorage.removeItem(key); } catch (_) {}
-  }
-
-  function readNumber(key){
-    const n = Number.parseInt(storageGet(key) || "0", 10);
-    return Number.isFinite(n) ? n : 0;
-  }
-
-  function safeKey(value){
-    return encodeURIComponent(String(value || "राधा").trim());
-  }
-
-  function japConversationKey(conversationKey, name){
-    return "bm_jap_conversation_" + conversationKey + "_" + safeKey(name);
-  }
-
-  function japTotalKey(name){
-    return "bm_jap_total_" + safeKey(name);
-  }
-
-  function historyKey(key = currentStorageKey){
-    return "bm_history_" + key;
-  }
-
-  function readHistory(key = currentStorageKey){
-    try{
-      const raw = JSON.parse(storageGet(historyKey(key)) || "[]");
-      return Array.isArray(raw) ? raw : [];
-    }catch{
-      return [];
-    }
-  }
-
-  function writeHistory(history, key = currentStorageKey){
-    storageSet(historyKey(key), JSON.stringify(history.slice(-20)));
-  }
-
-  function pushHistory(item){
-    const history = readHistory();
-    history.push(item);
-    writeHistory(history);
-  }
-
-  function setJapName(name){
-    const clean = String(name || "").trim();
-    if(!clean) return;
-
-    selectedJapName = clean;
-    storageSet("bm_jap_name", selectedJapName);
-
-    conversationJap = readNumber(japConversationKey(currentStorageKey, selectedJapName));
-    totalJap = readNumber(japTotalKey(selectedJapName));
-
-    japLabel.textContent = selectedJapName + " नाम जप";
-    japAdd.textContent = selectedJapName + " +1";
-
-    const builtIn = Array.from(japNameSelect.options).some(
-      option => option.value === selectedJapName && option.value !== "__custom__"
-    );
-
-    if(builtIn){
-      japNameSelect.value = selectedJapName;
-      customJapRow.classList.remove("show");
-    }else{
-      japNameSelect.value = "__custom__";
-      customJapName.value = selectedJapName;
-      customJapRow.classList.add("show");
-    }
-
-    renderJap();
-  }
-
-  function saveJap(){
-    storageSet(japTotalKey(selectedJapName), String(totalJap));
-    storageSet(
-      japConversationKey(currentStorageKey, selectedJapName),
-      String(conversationJap)
-    );
-  }
-
-  function renderJap(){
-    japCountEl.textContent = conversationJap.toLocaleString("en-IN");
-    japTotalEl.textContent = totalJap.toLocaleString("en-IN");
-    overlayCount.textContent = conversationJap.toLocaleString("en-IN");
-
-    const completed = conversationJap > 0 && conversationJap % 108 === 0;
-    const progress = completed ? 108 : conversationJap % 108;
-
-    document.querySelectorAll(".bead").forEach((bead, i) => {
-      bead.classList.toggle("active", i < progress);
-    });
-  }
-
-  function incrementJap(amount = 1){
-    conversationJap += amount;
-    totalJap += amount;
-    saveJap();
-    renderJap();
-  }
-
-  function migrateConversationStorage(newId){
-    if(!newId || newId === currentStorageKey) return;
-
-    const oldKey = currentStorageKey;
-    const oldHistory = readHistory(oldKey);
-    const newHistory = readHistory(newId);
-
-    if(oldHistory.length && !newHistory.length){
-      writeHistory(oldHistory, newId);
-    }
-
-    const newJapKey = japConversationKey(newId, selectedJapName);
-    const existingNewCount = readNumber(newJapKey);
-    storageSet(newJapKey, String(Math.max(existingNewCount, conversationJap)));
-
-    if(oldKey === "draft"){
-      storageRemove(historyKey("draft"));
-      storageRemove(japConversationKey("draft", selectedJapName));
-    }
-
-    currentStorageKey = newId;
-    conversationId = newId;
-    storageSet("bm_conversation", newId);
-  }
-
-  function startJap(){
-    stopJap();
-
-    requestStarted = Date.now();
-    stageIndex = 0;
-    searchStage.textContent = STAGES[0];
-    searchJapName.textContent = selectedJapName;
-    overlay.classList.add("show");
-    japRunning.classList.add("show");
-    renderJap();
-
-    japTimer = setInterval(() => incrementJap(1), 900);
-
-    elapsedTimer = setInterval(() => {
-      const sec = Math.floor((Date.now() - requestStarted) / 1000);
-      searchTime.textContent = sec + " सेकंड";
-    }, 500);
-
-    stageTimer = setInterval(() => {
-      stageIndex = (stageIndex + 1) % STAGES.length;
-      searchStage.textContent = STAGES[stageIndex];
-    }, 4300);
-  }
-
-  function stopJap(){
-    clearInterval(japTimer);
-    clearInterval(elapsedTimer);
-    clearInterval(stageTimer);
-    japTimer = elapsedTimer = stageTimer = null;
-    overlay.classList.remove("show");
-    japRunning.classList.remove("show");
-  }
-
-  function buildMala(){
-    const mala = $("mala");
-    mala.innerHTML = "";
-
-    for(let i = 0; i < 108; i++){
-      const bead = document.createElement("span");
-      bead.className = "bead";
-      mala.appendChild(bead);
-    }
-  }
-
-  function buildAura(){
-    const aura = $("aura");
-    const count = window.innerWidth < 640 ? 24 : 43;
-
-    for(let i = 0; i < count; i++){
-      const node = document.createElement("span");
-      node.className = "aura-name";
-      node.textContent = NAMES[i % NAMES.length];
-      node.style.left = ((i * 37 + 11) % 101) + "%";
-      node.style.top = ((i * 23 + 7) % 103) + "%";
-      node.style.fontSize = (16 + ((i * 7) % 25)) + "px";
-      node.style.transform = "rotate(" + (-20 + ((i * 13) % 41)) + "deg)";
-      node.style.animationDelay = "-" + ((i * 1.7) % 15) + "s";
-      node.style.animationDuration = (15 + ((i * 2.3) % 13)) + "s";
-      aura.appendChild(node);
-    }
-  }
-
-  function esc(value){
-    return String(value ?? "")
+  function esc(value) {
+    return safeText(value)
       .replaceAll("&", "&amp;")
       .replaceAll("<", "&lt;")
       .replaceAll(">", "&gt;")
@@ -262,442 +129,1283 @@
       .replaceAll("'", "&#039;");
   }
 
-  function makeMessage(role){
-    const row = document.createElement("div");
-    row.className = "message " + role;
-
-    const avatar = document.createElement("div");
-    avatar.className = "avatar";
-    avatar.textContent = role === "user" ? "आप" : "राधा";
-
-    const bubble = document.createElement("div");
-    bubble.className = "bubble";
-
-    row.append(avatar, bubble);
-    return {row, bubble};
+  function showToast(message) {
+    els.toast.textContent = message;
+    els.toast.classList.add("show");
+    setTimeout(() => els.toast.classList.remove("show"), 2400);
   }
 
-  function addUser(text, persist = true){
-    hideWelcome();
-
-    const {row, bubble} = makeMessage("user");
-    bubble.textContent = text;
-    messages.appendChild(row);
-
-    if(persist) pushHistory({role:"user", text});
-    scrollBottom();
-
-    return row;
+  function openModal(el) {
+    el?.classList.add("show");
   }
 
-  function evidenceLabel(data){
-    if(data.answer_status === "source_only"){
-      return "स्रोत मिले — साफ़ उत्तर-अंश नहीं मिला";
+  function closeModal(el) {
+    el?.classList.remove("show");
+  }
+
+  function closeSidebar() {
+    els.sidebar.classList.remove("open");
+    els.drawerBackdrop.classList.remove("show");
+  }
+
+  function openSidebar() {
+    els.sidebar.classList.add("open");
+    els.drawerBackdrop.classList.add("show");
+  }
+
+  function applyTheme(theme = state.theme) {
+    state.theme = theme || "system";
+    localStorage.setItem("bm_theme", state.theme);
+
+    const resolved = state.theme === "system"
+      ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+      : state.theme;
+
+    document.documentElement.dataset.theme = resolved;
+    els.themeToggle.textContent = resolved === "dark" ? "☀" : "☾";
+  }
+
+  function cycleTheme() {
+    const resolved = document.documentElement.dataset.theme;
+    const next = resolved === "dark" ? "light" : "dark";
+    applyTheme(next);
+    if (state.user) {
+      updateProfileFields({ theme: next }, false);
     }
-    if(data.evidence_level === "direct") return "सीधा प्रमाण";
-    if(data.evidence_level === "related") return "संबंधित शिक्षा";
-    return "पर्याप्त प्रमाण नहीं";
+    track("theme_changed", { theme: next });
   }
 
-  function splitAnswer(answer){
-    const text = String(answer || "").trim();
-    const headings = [
-      ["🪷 सत्संग से सीधी शिक्षा", "direct-teaching"],
-      ["💭 इस शिक्षा को गहराई से समझें", ""],
-      ["🌱 सामान्य व्यवहारिक समझ", ""]
-    ];
+  function setLanguage(value, { persist = true } = {}) {
+    state.language = ["auto", "hi", "hinglish", "en"].includes(value) ? value : "auto";
+    els.languageSelect.value = state.language;
+    if (persist) localStorage.setItem("bm_language", state.language);
 
-    const found = [];
-    for(const [title, cls] of headings){
-      const idx = text.indexOf(title);
-      if(idx >= 0) found.push({title, cls, idx});
+    if (state.user && persist) {
+      updateProfileFields({ preferred_language: state.language }, false);
     }
-    found.sort((a,b) => a.idx - b.idx);
-
-    if(!found.length){
-      return [{
-        title:"उत्तर",
-        cls:"",
-        body:text || "स्रोत मिले हैं, लेकिन साफ़ उत्तर का अंश नहीं मिल पाया।"
-      }];
+    if (state.activeConversationId && state.user && persist) {
+      api(`/api/conversations/${encodeURIComponent(state.activeConversationId)}`, {
+        method: "PATCH",
+        body: { preferred_language: state.language },
+      }).catch(() => {});
     }
-
-    const sections = [];
-    for(let i = 0; i < found.length; i++){
-      const cur = found[i];
-      const next = found[i + 1];
-      const start = cur.idx + cur.title.length;
-      const end = next ? next.idx : text.length;
-
-      sections.push({
-        title:cur.title,
-        cls:cur.cls,
-        body:text.slice(start, end).trim()
-      });
-    }
-
-    const prefix = text.slice(0, found[0].idx).trim();
-    if(prefix) sections.unshift({title:"उत्तर", cls:"", body:prefix});
-
-    return sections;
   }
 
-  function safeYoutubeUrl(value){
-    if(!value) return "";
-
-    try{
-      const parsed = new URL(value);
-      if(
-        parsed.protocol === "https:" &&
-        ["youtube.com", "www.youtube.com", "youtu.be"].includes(parsed.hostname)
-      ){
-        return parsed.href;
-      }
-    }catch(_){}
-
-    return "";
+  function autoSize() {
+    els.question.style.height = "auto";
+    els.question.style.height = Math.min(els.question.scrollHeight, 150) + "px";
   }
 
-  function sourceCard(source){
-    const link = document.createElement("a");
-    link.className = "source-card";
-
-    const safeUrl = safeYoutubeUrl(source.answer_url || source.url);
-    if(safeUrl){
-      link.href = safeUrl;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-    }else{
-      link.href = "#";
-      link.addEventListener("click", event => event.preventDefault());
-    }
-
-    const rel = typeof source.relevance === "number"
-      ? Math.round(source.relevance * 100) + "% मेल"
-      : "Bhajan Marg";
-
-    const shownStart = source.answer_start || source.start || "स्रोत";
-    const shownEnd = source.answer_end || source.end || "";
-
-    link.innerHTML = `
-      <div class="source-top">
-        <span class="source-time">${esc(shownStart)}</span>
-        <span class="source-relevance">${esc(rel)}</span>
-      </div>
-      <div class="source-title">${esc(source.title || "Bhajan Marg सत्संग")}</div>
-      <div class="source-excerpt">${esc(source.transcript_excerpt || source.text || "")}</div>
-      <div class="answer-note">${
-        shownEnd
-          ? `${esc(shownStart)}–${esc(shownEnd)} · `
-          : ""
-      }यह अंश अपने-आप बने कैप्शन से है; इसमें गलती हो सकती है।</div>
-    `;
-
-    return link;
-  }
-
-  function addAI(data, persist = true){
-    hideWelcome();
-
-    const {row, bubble} = makeMessage("ai");
-    const level = data.evidence_level || "none";
-    const standalone = data.standalone_query || "";
-
-    const meta = document.createElement("div");
-    meta.className = "answer-meta";
-    meta.innerHTML = `
-      <span class="evidence-badge ${esc(level)}">${esc(evidenceLabel(data))}</span>
-      <span class="query-label" title="${esc(standalone)}">${esc(standalone)}</span>
-    `;
-
-    const body = document.createElement("div");
-    body.className = "answer-body";
-
-    splitAnswer(data.answer || "").forEach(section => {
-      const box = document.createElement("section");
-      box.className = "answer-section " + section.cls;
-      box.innerHTML = `
-        <div class="section-title">${esc(section.title)}</div>
-        <div class="answer-text">${esc(section.body)}</div>
-      `;
-      body.appendChild(box);
+  function scrollBottom(behavior = "smooth") {
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: document.body.scrollHeight, behavior });
     });
-
-    if(data.evidence_reason){
-      const note = document.createElement("div");
-      note.className = "answer-note";
-      note.textContent = "स्रोत चुनने का कारण: " + data.evidence_reason;
-      body.appendChild(note);
-    }
-
-    bubble.append(meta, body);
-
-    if(Array.isArray(data.sources) && data.sources.length){
-      const srcWrap = document.createElement("div");
-      srcWrap.className = "sources";
-
-      const title = document.createElement("div");
-      title.className = "sources-title";
-      title.innerHTML = `<span>मूल सत्संग स्रोत</span><span>${data.sources.length} स्रोत</span>`;
-
-      const grid = document.createElement("div");
-      grid.className = "source-grid";
-      data.sources.forEach(source => grid.appendChild(sourceCard(source)));
-
-      srcWrap.append(title, grid);
-      bubble.appendChild(srcWrap);
-    }
-
-    messages.appendChild(row);
-
-    if(persist){
-      pushHistory({
-        role:"ai",
-        data:{
-          answer:data.answer || "",
-          answer_status:data.answer_status || "",
-          evidence_level:level,
-          evidence_reason:data.evidence_reason || "",
-          standalone_query:standalone,
-          sources:(data.sources || []).slice(0,3)
-        }
-      });
-    }
-
-    scrollBottom();
   }
 
-  function showWelcome(){
-    messages.innerHTML = `
+  function uuidOrNull(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value || "")
+      ? value
+      : null;
+  }
+
+  function guestStore() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem("bm_guest_conversations_v1") || "[]");
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function saveGuestStore(conversations) {
+    localStorage.setItem("bm_guest_conversations_v1", JSON.stringify(conversations.slice(0, 50)));
+  }
+
+  function guestConversation(id) {
+    return guestStore().find((item) => item.id === id) || null;
+  }
+
+  function persistGuestConversation(conversation) {
+    const all = guestStore().filter((item) => item.id !== conversation.id);
+    all.unshift(conversation);
+    saveGuestStore(all);
+  }
+
+  function guestNewConversation() {
+    const id = crypto.randomUUID();
+    const conversation = {
+      id,
+      title: "New chat",
+      preferred_language: state.language,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      last_message_at: new Date().toISOString(),
+      messages: [],
+    };
+    persistGuestConversation(conversation);
+    return conversation;
+  }
+
+  function guestDeleteConversation(id) {
+    saveGuestStore(guestStore().filter((item) => item.id !== id));
+  }
+
+  function guestRenameConversation(id, title) {
+    const all = guestStore();
+    const item = all.find((x) => x.id === id);
+    if (!item) return;
+    item.title = title;
+    item.updated_at = new Date().toISOString();
+    saveGuestStore(all);
+  }
+
+  function guestSaveMessage(message) {
+    const conv = guestConversation(state.activeConversationId) || guestNewConversation();
+    conv.messages = Array.isArray(conv.messages) ? conv.messages : [];
+    conv.messages.push(message);
+    conv.messages = conv.messages.slice(-80);
+    conv.updated_at = new Date().toISOString();
+    conv.last_message_at = conv.updated_at;
+    persistGuestConversation(conv);
+  }
+
+  function authAvailable() {
+    return true;
+  }
+
+  function displayNameFromUser(user) {
+    return state.profile?.name || user?.name || user?.email?.split("@")[0] || "User";
+  }
+
+  function avatarInitial(name) {
+    return (safeText(name).trim()[0] || "अ").toUpperCase();
+  }
+
+  function renderAccount() {
+    if (state.user) {
+      const name = displayNameFromUser(state.user);
+      const avatar = state.profile?.avatar_url || state.user.avatar_url;
+      els.profileName.textContent = name;
+      els.profileEmail.textContent = state.user.email || "Signed in";
+      els.authButton.textContent = name.split(" ")[0] || "Profile";
+      if (avatar) {
+        els.profileAvatar.innerHTML = `<img src="${esc(avatar)}" alt="" style="width:100%;height:100%;object-fit:cover">`;
+      } else {
+        els.profileAvatar.textContent = avatarInitial(name);
+      }
+    } else {
+      els.profileName.textContent = "Guest";
+      els.profileEmail.textContent = "Chats saved on this device";
+      els.authButton.textContent = "Sign in";
+      els.profileAvatar.textContent = "अ";
+    }
+  }
+
+  async function loadProfile() {
+    if (!state.user) return;
+    try {
+      const data = await api("/api/auth/me");
+      state.user = data.user || state.user;
+      state.profile = state.user;
+    } catch (error) {
+      console.warn("profile load", error);
+      return;
+    }
+    if (state.profile?.preferred_language) {
+      setLanguage(state.profile.preferred_language, { persist: true });
+    }
+    if (state.profile?.theme) {
+      state.theme = state.profile.theme;
+      applyTheme(state.theme);
+    }
+    renderAccount();
+  }
+
+  async function updateProfileFields(fields, notify = true) {
+    if (!state.user) return;
+    try {
+      const data = await api("/api/profile", { method: "PATCH", body: fields });
+      state.user = data.user || state.user;
+      state.profile = state.user;
+      renderAccount();
+      if (notify) showToast("Profile saved");
+    } catch (error) {
+      if (notify) showToast(error.message || "Profile could not be saved");
+      console.warn(error);
+    }
+  }
+
+  async function initAuth() {
+    const params = new URLSearchParams(location.search);
+    if (params.get("reset_token")) {
+      openModal(els.resetModal);
+    }
+    if (params.get("auth_error")) {
+      showToast("Google sign-in could not be completed");
+    }
+
+    try {
+      const data = await api("/api/auth/me");
+      state.user = data.user || null;
+      state.profile = state.user;
+    } catch (error) {
+      state.user = null;
+      state.profile = null;
+    }
+    await onAuthChanged();
+  }
+
+  async function onAuthChanged() {
+    renderAccount();
+
+    if (state.user) {
+      await loadProfile();
+      await loadConversations();
+
+      const remembered = localStorage.getItem("bm_cloud_conversation");
+      const target = state.conversations.find((x) => x.id === remembered)?.id || state.conversations[0]?.id;
+      if (target) {
+        await selectConversation(target, { closeDrawer: false });
+      } else {
+        await createConversation({ select: true });
+      }
+      track("session_started", { authenticated: true });
+    } else {
+      await loadConversations();
+
+      const remembered = localStorage.getItem("bm_guest_active_conversation");
+      const target = state.conversations.find((x) => x.id === remembered)?.id || state.conversations[0]?.id;
+      if (target) {
+        await selectConversation(target, { closeDrawer: false });
+      } else {
+        await createConversation({ select: true });
+      }
+      track("session_started", { authenticated: false });
+    }
+  }
+
+  async function signInGoogle() {
+    els.authStatus.textContent = "Opening Google…";
+    location.href = `${API_BASE}/api/auth/google/start`;
+  }
+
+  async function submitEmailAuth() {
+    const email = els.authEmail.value.trim();
+    const password = els.authPassword.value;
+    const name = els.authName.value.trim();
+
+    if (!email || !password) {
+      els.authStatus.textContent = "Enter email and password";
+      return;
+    }
+    if (state.authMode === "signup" && password.length < 8) {
+      els.authStatus.textContent = "Use at least 8 characters";
+      return;
+    }
+
+    els.emailAuthSubmit.disabled = true;
+    els.authStatus.textContent = state.authMode === "signup" ? "Creating account…" : "Signing in…";
+
+    try {
+      const endpoint = state.authMode === "signup" ? "/api/auth/register" : "/api/auth/login";
+      const payload = state.authMode === "signup" ? { email, password, name } : { email, password };
+      const result = await api(endpoint, { method: "POST", body: payload });
+      state.user = result.user || null;
+      state.profile = state.user;
+      closeModal(els.authModal);
+      els.authStatus.textContent = "";
+      await onAuthChanged();
+    } catch (error) {
+      els.authStatus.textContent = error.message || "Authentication failed";
+    } finally {
+      els.emailAuthSubmit.disabled = false;
+    }
+  }
+
+  async function forgotPassword() {
+    const email = els.authEmail.value.trim();
+    if (!email) {
+      els.authStatus.textContent = "Enter your email first";
+      return;
+    }
+    try {
+      const result = await api("/api/auth/forgot-password", { method: "POST", body: { email } });
+      els.authStatus.textContent = result.message || "If that account exists, a reset link has been sent.";
+      if (result.debug_reset_url) {
+        console.info("Development reset URL:", result.debug_reset_url);
+      }
+    } catch (error) {
+      els.authStatus.textContent = error.message || "Could not request password reset";
+    }
+  }
+
+  async function updatePassword() {
+    const password = els.newPassword.value;
+    if (password.length < 8) return showToast("Use at least 8 characters");
+    const token = new URLSearchParams(location.search).get("reset_token");
+    if (!token) return showToast("Reset link is missing or expired");
+
+    try {
+      await api("/api/auth/reset-password", { method: "POST", body: { token, password } });
+      els.newPassword.value = "";
+      closeModal(els.resetModal);
+      const url = new URL(location.href);
+      url.searchParams.delete("reset_token");
+      history.replaceState({}, "", url.pathname + url.search + url.hash);
+      showToast("Password updated — sign in with your new password");
+      openModal(els.authModal);
+    } catch (error) {
+      showToast(error.message || "Password could not be updated");
+    }
+  }
+
+  async function logout() {
+    try { await api("/api/auth/logout", { method: "POST", body: {} }); } catch {}
+    state.session = null;
+    state.user = null;
+    state.profile = null;
+    localStorage.removeItem("bm_cloud_conversation");
+    closeModal(els.profileModal);
+    await onAuthChanged();
+  }
+
+  async function loadConversations() {
+    if (state.user) {
+      try {
+        state.conversations = await api("/api/conversations");
+      } catch (error) {
+        console.warn(error);
+        state.conversations = [];
+      }
+    } else {
+      state.conversations = guestStore()
+        .sort((a, b) => safeText(b.last_message_at).localeCompare(safeText(a.last_message_at)))
+        .slice(0, 50);
+    }
+
+    renderConversationList();
+  }
+
+  function renderConversationList(filter = "") {
+    const needle = filter.trim().toLowerCase();
+    const list = state.conversations.filter((c) => !needle || safeText(c.title).toLowerCase().includes(needle));
+
+    if (!list.length) {
+      els.conversationList.innerHTML = `<div class="empty-side">${needle ? "No matching chats." : "Your recent chats will appear here."}</div>`;
+      return;
+    }
+
+    els.conversationList.innerHTML = "";
+
+    for (const conv of list) {
+      const item = document.createElement("div");
+      item.className = "conversation-item" + (conv.id === state.activeConversationId ? " active" : "");
+      item.dataset.id = conv.id;
+
+      const title = document.createElement("button");
+      title.type = "button";
+      title.className = "conversation-title";
+      title.style.cssText = "border:0;background:transparent;color:inherit;padding:0;text-align:left;cursor:pointer";
+      title.textContent = conv.title || "New chat";
+      title.addEventListener("click", () => selectConversation(conv.id));
+
+      const menu = document.createElement("button");
+      menu.type = "button";
+      menu.className = "conversation-menu";
+      menu.textContent = "•••";
+      menu.title = "Conversation options";
+      menu.addEventListener("click", (event) => {
+        event.stopPropagation();
+        conversationActions(conv);
+      });
+
+      item.append(title, menu);
+      els.conversationList.appendChild(item);
+    }
+  }
+
+  async function conversationActions(conv) {
+    const action = prompt(
+      `Chat: ${conv.title}\n\nType:\nR = rename\nD = delete\nAnything else = cancel`
+    );
+    if (!action) return;
+
+    if (action.trim().toLowerCase() === "r") {
+      const title = prompt("New chat name", conv.title || "");
+      if (!title?.trim()) return;
+      await renameConversation(conv.id, title.trim().slice(0, 120));
+    } else if (action.trim().toLowerCase() === "d") {
+      if (!confirm(`Delete "${conv.title}"?`)) return;
+      await deleteConversation(conv.id);
+    }
+  }
+
+  async function createConversation({ select = true } = {}) {
+    let conv;
+
+    if (state.user) {
+      try {
+        conv = await api("/api/conversations", {
+          method: "POST",
+          body: { title: "New chat", preferred_language: state.language },
+        });
+      } catch (error) {
+        console.warn(error);
+        showToast("Could not create cloud chat");
+        return null;
+      }
+    } else {
+      conv = guestNewConversation();
+    }
+
+    state.conversations.unshift(conv);
+    renderConversationList(els.chatSearch.value);
+    track("conversation_created", {});
+    if (select) await selectConversation(conv.id);
+    return conv;
+  }
+
+  async function renameConversation(id, title) {
+    if (state.user) {
+      try {
+        await api(`/api/conversations/${encodeURIComponent(id)}`, { method: "PATCH", body: { title } });
+      } catch (error) {
+        return showToast(error.message || "Rename failed");
+      }
+    } else {
+      guestRenameConversation(id, title);
+    }
+
+    const conv = state.conversations.find((x) => x.id === id);
+    if (conv) conv.title = title;
+    if (id === state.activeConversationId) {
+      state.activeConversationTitle = title;
+      els.contextTitle.textContent = title;
+    }
+    renderConversationList(els.chatSearch.value);
+  }
+
+  async function deleteConversation(id) {
+    if (state.user) {
+      try {
+        await api(`/api/conversations/${encodeURIComponent(id)}`, { method: "DELETE" });
+      } catch (error) {
+        return showToast(error.message || "Delete failed");
+      }
+    } else {
+      guestDeleteConversation(id);
+    }
+
+    state.conversations = state.conversations.filter((x) => x.id !== id);
+    if (state.activeConversationId === id) {
+      state.activeConversationId = null;
+      state.messages = [];
+      await createConversation({ select: true });
+    } else {
+      renderConversationList(els.chatSearch.value);
+    }
+  }
+
+  async function selectConversation(id, { closeDrawer: shouldClose = true } = {}) {
+    const conv = state.conversations.find((x) => x.id === id);
+    if (!conv) return;
+
+    state.activeConversationId = id;
+    state.activeConversationTitle = conv.title || "New chat";
+    els.contextTitle.textContent = state.activeConversationTitle;
+
+    if (state.user) {
+      localStorage.setItem("bm_cloud_conversation", id);
+      if (conv.preferred_language) setLanguage(conv.preferred_language, { persist: false });
+    } else {
+      localStorage.setItem("bm_guest_active_conversation", id);
+      if (conv.preferred_language) setLanguage(conv.preferred_language, { persist: false });
+    }
+
+    if (state.user) {
+      try {
+        const data = await api(`/api/conversations/${encodeURIComponent(id)}/messages`);
+        state.messages = (data || []).map(normalizeStoredMessage);
+      } catch (error) {
+        console.warn(error);
+        state.messages = [];
+      }
+    } else {
+      state.messages = (guestConversation(id)?.messages || []).map(normalizeStoredMessage);
+    }
+
+    renderMessages();
+    renderConversationList(els.chatSearch.value);
+    if (shouldClose) closeSidebar();
+
+    const userTurns = state.messages.filter((m) => m.role === "user").length;
+    if (userTurns > 0) track("conversation_returned", { user_turns: userTurns });
+  }
+
+  function normalizeStoredMessage(row) {
+    const sources = row.message_sources || row.sources || row.data?.sources || [];
+    return {
+      id: row.id || row.local_id || crypto.randomUUID(),
+      role: row.role,
+      content: row.content || row.text || row.data?.answer || "",
+      standalone_query: row.standalone_query || row.data?.standalone_query || "",
+      evidence_level: row.evidence_level || row.data?.evidence_level || "",
+      evidence_reason: row.evidence_reason || row.data?.evidence_reason || "",
+      answer_status: row.answer_status || row.data?.answer_status || "",
+      extraction_status: row.extraction_status || row.data?.extraction_status || "",
+      interpretation_status: row.interpretation_status || row.data?.interpretation_status || "",
+      response_language: row.response_language || row.data?.response_language || "",
+      request_id: row.request_id || row.data?.request_id || "",
+      elapsed_ms: row.elapsed_ms || row.data?.elapsed_ms || null,
+      quotes: row.quotes || row.data?.quotes || [],
+      claims: row.claims || row.data?.claims || [],
+      sources: sources.sort?.((a, b) => (a.source_index || 0) - (b.source_index || 0)) || sources,
+      created_at: row.created_at || new Date().toISOString(),
+      question_snapshot: row.question_snapshot || "",
+    };
+  }
+
+  function showWelcome() {
+    els.messages.innerHTML = `
       <div class="welcome" id="welcome">
-        <div class="welcome-symbol">राधा</div>
-        <h2>मन में जो है, पूछिए</h2>
+        <div class="welcome-mark">राधा</div>
+        <h1>What would you like to understand today?</h1>
         <p>
-          आपका प्रश्न Bhajan Marg के उपलब्ध सत्संगों में खोजा जाएगा।
-          साफ़ स्रोत मिलने पर वीडियो और समय के साथ दिखेगा।
+          Your question is searched across the available Bhajan Marg satsang corpus.
+          Direct teaching is shown only when the sources support it. AI explanation is kept separate.
         </p>
         <div class="suggestions">
           <button class="suggestion" type="button">बार-बार क्रोध आए तो क्या करें?</button>
-          <button class="suggestion" type="button">भजन में मन नहीं लगता तो क्या करें?</button>
           <button class="suggestion" type="button">भगवान पर विश्वास कैसे बढ़ाएं?</button>
-          <button class="suggestion" type="button">मृत्यु का डर कैसे दूर करें?</button>
+          <button class="suggestion" type="button">Mann shaant kaise kare?</button>
+          <button class="suggestion" type="button">How should I do naam-jap when my mind wanders?</button>
         </div>
       </div>
     `;
-
-    document.querySelectorAll(".suggestion").forEach(button => {
+    els.messages.querySelectorAll(".suggestion").forEach((button) => {
       button.addEventListener("click", () => {
-        q.value = button.textContent.trim();
-        q.focus();
+        els.question.value = button.textContent.trim();
         autoSize();
+        els.question.focus();
       });
     });
   }
 
-  function hideWelcome(){
-    const welcome = $("welcome");
-    if(welcome) welcome.remove();
-  }
-
-  function restoreHistory(){
-    const history = readHistory();
-
-    if(!history.length){
+  function renderMessages() {
+    els.messages.innerHTML = "";
+    if (!state.messages.length) {
       showWelcome();
       return;
     }
 
-    messages.innerHTML = "";
-    history.forEach(item => {
-      if(item.role === "user") addUser(item.text || "", false);
-      if(item.role === "ai") addAI(item.data || {}, false);
+    state.messages.forEach((message, index) => renderMessage(message, index));
+    scrollBottom("auto");
+  }
+
+  function evidenceLabel(message) {
+    if (message.answer_status === "source_only") return "Source found · clean answer span unavailable";
+    if (message.evidence_level === "direct") return "Direct satsang evidence";
+    if (message.evidence_level === "related") return "Related teaching";
+    return "No sufficient source evidence";
+  }
+
+  function splitAnswer(answer) {
+    const text = safeText(answer).trim();
+    const headingSets = [
+      ["🪷 सत्संग से सीधी शिक्षा", "Direct teaching from satsang", "direct"],
+      ["💭 इस शिक्षा को गहराई से समझें", "Understand this teaching", "explanation"],
+      ["🌱 सामान्य व्यवहारिक समझ", "Practical reflection", "practical"],
+    ];
+
+    const matches = [];
+    for (const [hi, en, key] of headingSets) {
+      for (const heading of [hi, en]) {
+        const idx = text.indexOf(heading);
+        if (idx >= 0) matches.push({ idx, heading, key });
+      }
+    }
+
+    matches.sort((a, b) => a.idx - b.idx);
+    const dedup = matches.filter((item, i) => i === 0 || item.idx !== matches[i - 1].idx);
+
+    if (!dedup.length) {
+      return [{ title: "Answer", body: text || "No answer available.", key: "answer" }];
+    }
+
+    const sections = [];
+    const prefix = text.slice(0, dedup[0].idx).trim();
+    if (prefix) sections.push({ title: "Answer", body: prefix, key: "answer" });
+
+    dedup.forEach((item, i) => {
+      const end = dedup[i + 1]?.idx ?? text.length;
+      sections.push({
+        title: item.heading,
+        body: text.slice(item.idx + item.heading.length, end).trim(),
+        key: item.key,
+      });
     });
+    return sections;
   }
 
-  function scrollBottom(){
-    setTimeout(() => {
-      window.scrollTo({top:document.body.scrollHeight, behavior:"smooth"});
-    }, 40);
-  }
+  function sourceUrl(source) {
+    const direct = source.answer_url || source.url || "";
+    try {
+      const url = new URL(direct);
+      if (["youtube.com", "www.youtube.com", "youtu.be"].includes(url.hostname)) return url.href;
+    } catch {}
 
-  function showToast(message){
-    toast.textContent = message;
-    toast.classList.add("show");
-    setTimeout(() => toast.classList.remove("show"), 2600);
-  }
-
-  function autoSize(){
-    q.style.height = "auto";
-    q.style.height = Math.min(q.scrollHeight, 145) + "px";
-  }
-
-  async function askQuestion(text){
-    if(!configured && !API_BASE && !location.hostname.includes("onrender.com")){
-      throw new Error("Backend URL तय नहीं है।");
+    if (source.video_id) {
+      const seconds = Math.floor(Number(source.answer_start_ms ?? source.timestamp_start_ms ?? source.start_ms ?? 0) / 1000);
+      return `https://www.youtube.com/watch?v=${encodeURIComponent(source.video_id)}&t=${Math.max(seconds, 0)}s`;
     }
-    if(configured && API_BASE.includes("REPLACE-ME")){
-      throw new Error("web/config.js में Backend URL तय नहीं है।");
+    return "";
+  }
+
+  function sourceStart(source) {
+    return source.answer_start || source.timestamp_start || source.start || msToClock(
+      source.answer_start_ms ?? source.timestamp_start_ms ?? source.start_ms
+    );
+  }
+
+  function sourceEnd(source) {
+    return source.answer_end || source.timestamp_end || source.end || msToClock(
+      source.answer_end_ms ?? source.timestamp_end_ms ?? source.end_ms
+    );
+  }
+
+  function msToClock(ms) {
+    const value = Number(ms);
+    if (!Number.isFinite(value) || value < 0) return "";
+    const total = Math.floor(value / 1000);
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    return h
+      ? `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+      : `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  }
+
+  function renderSource(source, index) {
+    const href = sourceUrl(source);
+    const start = sourceStart(source) || "Source";
+    const end = sourceEnd(source);
+    const excerpt = source.transcript_excerpt || source.text || "";
+    const title = source.video_title || source.title || "Bhajan Marg satsang";
+    const relevance = typeof source.relevance === "number"
+      ? `${Math.round(source.relevance * 100)}% match`
+      : "";
+    const range = end && end !== start ? `${start} – ${end}` : start;
+
+    const card = document.createElement(href ? "a" : "div");
+    card.className = "source-card";
+    if (href) {
+      card.href = href;
+      card.target = "_blank";
+      card.rel = "noopener noreferrer";
+    }
+    card.innerHTML = `
+      <div class="source-top">
+        <span class="source-time">▶ ${esc(range)}</span>
+        <span class="source-relevance">${esc(relevance)}</span>
+      </div>
+      <div class="source-title">${esc(title)}</div>
+      ${excerpt ? `<div class="source-excerpt">“${esc(excerpt)}”</div>` : ""}
+      <div class="source-cta">${href ? `Watch from ${esc(start)} →` : "Source timestamp unavailable"}</div>
+    `;
+    return card;
+  }
+
+  function renderMessage(message, index) {
+    const row = document.createElement("div");
+    row.className = `message ${message.role === "user" ? "user" : "assistant"}`;
+    row.dataset.messageId = message.id || "";
+
+    if (message.role === "assistant") {
+      const avatar = document.createElement("div");
+      avatar.className = "avatar";
+      avatar.textContent = "र";
+      row.appendChild(avatar);
     }
 
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+
+    if (message.role === "user") {
+      bubble.textContent = message.content;
+    } else {
+      const meta = document.createElement("div");
+      meta.className = "answer-meta";
+      meta.innerHTML = `
+        <span class="evidence-badge ${esc(message.evidence_level || "none")}">${esc(evidenceLabel(message))}</span>
+        ${message.standalone_query ? `<span class="query-label" title="${esc(message.standalone_query)}">${esc(message.standalone_query)}</span>` : ""}
+      `;
+      bubble.appendChild(meta);
+
+      splitAnswer(message.content).forEach((section) => {
+        const box = document.createElement("section");
+        box.className = "answer-section";
+        box.innerHTML = `
+          <div class="section-title">${esc(section.title)}</div>
+          <div class="answer-text">${esc(section.body)}</div>
+        `;
+        bubble.appendChild(box);
+      });
+
+      if (message.evidence_reason) {
+        const note = document.createElement("div");
+        note.className = "answer-note";
+        note.textContent = "Why these sources: " + message.evidence_reason;
+        bubble.appendChild(note);
+      }
+
+      if (Array.isArray(message.sources) && message.sources.length) {
+        const sources = document.createElement("div");
+        sources.className = "sources";
+        const title = document.createElement("div");
+        title.className = "sources-title";
+        title.innerHTML = `<span>Original satsang sources</span><span>${message.sources.length} source${message.sources.length > 1 ? "s" : ""}</span>`;
+        const grid = document.createElement("div");
+        grid.className = "source-grid";
+        message.sources.forEach((source, sourceIndex) => grid.appendChild(renderSource(source, sourceIndex)));
+        sources.append(title, grid);
+        bubble.appendChild(sources);
+      }
+
+      const feedback = document.createElement("div");
+      feedback.className = "feedback-row";
+      feedback.innerHTML = `
+        <button class="feedback-btn" type="button" data-rating="1">👍 Helpful</button>
+        <button class="feedback-btn" type="button" data-rating="-1">👎 Not helpful</button>
+      `;
+      feedback.querySelector('[data-rating="1"]').addEventListener("click", () => submitQuickFeedback(index, 1));
+      feedback.querySelector('[data-rating="-1"]').addEventListener("click", () => openNegativeFeedback(index));
+      bubble.appendChild(feedback);
+    }
+
+    row.appendChild(bubble);
+    els.messages.appendChild(row);
+  }
+
+  function recentHistoryForApi() {
+    return state.messages
+      .filter((m) => ["user", "assistant"].includes(m.role) && m.content)
+      .slice(-8)
+      .map((m) => ({ role: m.role, content: m.content }));
+  }
+
+  async function persistUserMessage(question) {
+    const message = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: question,
+      created_at: new Date().toISOString(),
+    };
+
+    if (state.user) {
+      try {
+        const data = await api(`/api/conversations/${encodeURIComponent(state.activeConversationId)}/messages`, {
+          method: "POST",
+          body: { role: "user", content: question },
+        });
+        return normalizeStoredMessage(data);
+      } catch (error) {
+        console.warn("persist user message", error);
+        return message;
+      }
+    }
+
+    guestSaveMessage(message);
+    return message;
+  }
+
+  async function persistAssistantMessage(data, questionSnapshot) {
+    const message = normalizeStoredMessage({
+      id: crypto.randomUUID(),
+      role: "assistant",
+      content: data.answer || "",
+      standalone_query: data.standalone_query || "",
+      evidence_level: data.evidence_level || "none",
+      evidence_reason: data.evidence_reason || "",
+      answer_status: data.answer_status || "",
+      extraction_status: data.extraction_status || "",
+      interpretation_status: data.interpretation_status || "",
+      response_language: data.response_language || "",
+      request_id: data.request_id || "",
+      elapsed_ms: data.elapsed_ms || null,
+      quotes: data.quotes || [],
+      claims: data.claims || [],
+      sources: data.sources || [],
+      question_snapshot: questionSnapshot,
+      created_at: new Date().toISOString(),
+    });
+
+    if (state.user) {
+      try {
+        const saved = await api(`/api/conversations/${encodeURIComponent(state.activeConversationId)}/messages`, {
+          method: "POST",
+          body: {
+            role: "assistant",
+            content: message.content,
+            standalone_query: message.standalone_query,
+            evidence_level: message.evidence_level,
+            evidence_reason: message.evidence_reason,
+            answer_status: message.answer_status,
+            extraction_status: message.extraction_status,
+            interpretation_status: message.interpretation_status,
+            response_language: message.response_language,
+            request_id: message.request_id,
+            elapsed_ms: message.elapsed_ms,
+            quotes: message.quotes,
+            claims: message.claims,
+            question_snapshot: questionSnapshot,
+            sources: message.sources || [],
+          },
+        });
+        return normalizeStoredMessage(saved);
+      } catch (error) {
+        console.warn("persist assistant", error);
+        return message;
+      }
+    }
+
+    guestSaveMessage(message);
+    return message;
+  }
+
+  async function maybeTitleConversation(question) {
+    const conv = state.conversations.find((x) => x.id === state.activeConversationId);
+    if (!conv || (conv.title && conv.title !== "New chat")) return;
+
+    const title = question.replace(/\s+/g, " ").trim().slice(0, 58) || "New chat";
+    await renameConversation(state.activeConversationId, title);
+  }
+
+  function beginSearch() {
+    let stage = 0;
+    const started = Date.now();
+    els.searchJapName.textContent = state.selectedJapName;
+    els.searchStage.textContent = STAGES[0];
+    els.searchTime.textContent = "0 सेकंड";
+    els.searchOverlay.classList.add("show");
+
+    state.searchTimers.push(setInterval(() => {
+      const sec = Math.floor((Date.now() - started) / 1000);
+      els.searchTime.textContent = `${sec} सेकंड`;
+    }, 500));
+
+    state.searchTimers.push(setInterval(() => {
+      stage = (stage + 1) % STAGES.length;
+      els.searchStage.textContent = STAGES[stage];
+    }, 4200));
+
+    state.searchTimers.push(setInterval(() => incrementJap(1), 900));
+  }
+
+  function endSearch() {
+    state.searchTimers.forEach(clearInterval);
+    state.searchTimers = [];
+    els.searchOverlay.classList.remove("show");
+  }
+
+  async function askApi(question, history) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 240000);
 
-    try{
+    try {
       const response = await fetch(`${API_BASE}/api/chat`, {
-        method:"POST",
-        signal:controller.signal,
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({
-          question:text,
-          conversation_id:conversationId || null
-        })
+        method: "POST",
+        credentials: "include",
+        signal: controller.signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question,
+          conversation_id: state.activeConversationId,
+          history,
+          preferred_language: state.language,
+        }),
       });
 
       const data = await response.json().catch(() => null);
-
-      if(!response.ok){
-        const trace = data?.error?.request_id || response.headers.get("X-Request-ID");
-        const base = data?.error?.message || `सर्वर त्रुटि (${response.status})`;
-        throw new Error(base + (trace ? ` · संदर्भ: ${trace}` : ""));
+      if (!response.ok) {
+        const ref = data?.error?.request_id || response.headers.get("X-Request-ID");
+        const message = data?.error?.message || `Server error (${response.status})`;
+        throw new Error(message + (ref ? ` · Reference ${ref}` : ""));
       }
-
-      if(!data || typeof data.answer !== "string" || !data.conversation_id){
-        throw new Error("सर्वर से पूरा उत्तर नहीं मिला।");
+      if (!data || typeof data.answer !== "string") {
+        throw new Error("The server returned an incomplete answer.");
       }
-
       return data;
-    }finally{
+    } finally {
       clearTimeout(timeout);
     }
   }
 
-  form.addEventListener("submit", async event => {
+  async function onSubmit(event) {
     event.preventDefault();
+    if (state.busy) return;
 
-    const text = q.value.trim();
-    if(!text || busy) return;
+    const question = els.question.value.trim();
+    if (!question) return;
 
-    busy = true;
-    askBtn.disabled = true;
-    newChatBtn.disabled = true;
+    if (!state.activeConversationId) {
+      const conv = await createConversation({ select: false });
+      if (!conv) return;
+      state.activeConversationId = conv.id;
+    }
 
-    const userRow = addUser(text);
-    q.value = "";
+    const history = recentHistoryForApi();
+    state.busy = true;
+    els.askBtn.disabled = true;
+    els.newChatBtn.disabled = true;
+
+    const userMessage = await persistUserMessage(question);
+    state.messages.push(userMessage);
+    if (state.messages.length === 1) els.messages.innerHTML = "";
+    renderMessage(userMessage, state.messages.length - 1);
+    els.question.value = "";
     autoSize();
+    scrollBottom();
+    beginSearch();
+    els.status.textContent = "Searching the satsang corpus…";
+    track("question_asked", { language: state.language, question: question.slice(0, 500), conversation_id: state.activeConversationId });
 
-    status.textContent = "सत्संग में खोज रहे हैं… पहली बार थोड़ा अधिक समय लग सकता है।";
-    startJap();
+    try {
+      const data = await askApi(question, history);
+      const assistantMessage = await persistAssistantMessage(data, question);
+      state.messages.push(assistantMessage);
+      renderMessage(assistantMessage, state.messages.length - 1);
 
-    try{
-      const data = await askQuestion(text);
+      await maybeTitleConversation(question);
+      await loadConversations();
+      renderConversationList(els.chatSearch.value);
 
-      if(data.conversation_id){
-        migrateConversationStorage(data.conversation_id);
-      }
+      els.status.textContent = data.evidence_level === "none"
+        ? "No sufficient direct source found."
+        : `Answer grounded with ${data.sources?.length || 0} source${(data.sources?.length || 0) === 1 ? "" : "s"}.`;
 
-      addAI(data);
+      track("answer_received", {
+        language: data.response_language || state.language,
+        evidence_level: data.evidence_level || "none",
+        answer_status: data.answer_status || "",
+        source_count: data.sources?.length || 0,
+        elapsed_ms: data.elapsed_ms || null,
+      });
+    } catch (error) {
+      userMessage.failed = true;
+      const message = error?.name === "AbortError"
+        ? "The answer took too long. Your question is kept below so you can retry."
+        : (error?.message || "The answer could not be loaded.");
 
-      status.textContent = data.standalone_query
-        ? "खोज: " + data.standalone_query
-        : "उत्तर स्रोतों के साथ मिला";
-    }catch(error){
-      userRow.classList.add("failed");
-
-      if(!q.value.trim()){
-        q.value = text;
+      if (!els.question.value.trim()) {
+        els.question.value = question;
         autoSize();
       }
-
-      const message = error?.name === "AbortError"
-        ? "उत्तर आने में बहुत समय लगा।"
-        : error instanceof TypeError
-          ? "सर्वर से संपर्क नहीं हो पाया।"
-          : (error?.message || "कुछ गड़बड़ हुई।");
-
-      status.textContent = message + " प्रश्न नीचे रखा है; फिर से भेजने के लिए खोजें दबाएं।";
+      els.status.textContent = message;
       showToast(message);
-    }finally{
-      stopJap();
-      busy = false;
-      askBtn.disabled = false;
-      newChatBtn.disabled = false;
-      q.focus();
+      track("answer_error", { error: message.slice(0, 160) });
+    } finally {
+      endSearch();
+      state.busy = false;
+      els.askBtn.disabled = false;
+      els.newChatBtn.disabled = false;
+      els.question.focus();
+      scrollBottom();
     }
-  });
+  }
 
-  q.addEventListener("input", autoSize);
+  async function submitQuickFeedback(index, rating) {
+    const assistant = state.messages[index];
+    if (!assistant || assistant.role !== "assistant") return;
 
-  q.addEventListener("keydown", event => {
-    if(event.key === "Enter" && !event.shiftKey){
-      event.preventDefault();
-      form.requestSubmit();
+    const question = assistant.question_snapshot || previousUserQuestion(index);
+    const payload = feedbackPayload(assistant, question, rating, rating === 1 ? "helpful" : null, null);
+
+    if (rating === -1) {
+      openNegativeFeedback(index);
+      return;
     }
-  });
 
-  japAdd.addEventListener("click", () => {
-    incrementJap(1);
-    showToast(selectedJapName + " नाम जप +1");
-  });
+    const ok = await sendFeedback(payload);
+    if (ok) {
+      markFeedbackButtons(index, rating);
+      showToast("Thanks — feedback saved");
+    }
+  }
 
-  newChatBtn.addEventListener("click", () => {
-    if(busy) return;
+  function openNegativeFeedback(index) {
+    state.feedbackTarget = index;
+    els.feedbackComment.value = "";
+    document.querySelectorAll('input[name="feedbackReason"]').forEach((x) => { x.checked = false; });
+    openModal(els.feedbackModal);
+  }
 
-    stopJap();
+  function previousUserQuestion(index) {
+    for (let i = index - 1; i >= 0; i--) {
+      if (state.messages[i]?.role === "user") return state.messages[i].content;
+    }
+    return "";
+  }
 
-    conversationId = "";
-    currentStorageKey = "draft";
-    storageRemove("bm_conversation");
-    storageRemove(historyKey("draft"));
-    storageRemove(japConversationKey("draft", selectedJapName));
+  function feedbackPayload(assistant, question, rating, reason, comment) {
+    return {
+      user_id: state.user?.id || null,
+      guest_id: state.user ? null : state.guestId,
+      conversation_id: uuidOrNull(state.activeConversationId),
+      message_id: state.user ? uuidOrNull(assistant.id) : null,
+      question: question || "",
+      answer: assistant.content || "",
+      retrieved_sources: assistant.sources || [],
+      rating,
+      reason,
+      comment,
+    };
+  }
 
-    conversationJap = 0;
-    totalJap = readNumber(japTotalKey(selectedJapName));
+  async function sendFeedback(payload) {
+    try {
+      await api("/api/feedback", {
+        method: "POST",
+        body: {
+          guest_id: state.user ? null : state.guestId,
+          conversation_id: uuidOrNull(payload.conversation_id),
+          message_id: uuidOrNull(payload.message_id),
+          question: payload.question || "",
+          answer: payload.answer || "",
+          retrieved_sources: payload.retrieved_sources || [],
+          rating: payload.rating,
+          reason: payload.reason || null,
+          comment: payload.comment || null,
+        },
+      });
+      track("feedback_submitted", { rating: payload.rating, reason: payload.reason || "" });
+      return true;
+    } catch (error) {
+      console.warn(error);
+      // Keep a local copy so tester feedback is not lost during a backend outage.
+      const local = JSON.parse(localStorage.getItem("bm_local_feedback") || "[]");
+      local.push({ ...payload, created_at: new Date().toISOString() });
+      localStorage.setItem("bm_local_feedback", JSON.stringify(local.slice(-200)));
+      showToast("Feedback saved on this device; cloud sync failed");
+      return true;
+    }
+  }
 
-    messages.innerHTML = "";
-    showWelcome();
+  async function submitDetailedFeedback() {
+    const index = state.feedbackTarget;
+    const assistant = state.messages[index];
+    if (!assistant) return;
+
+    const reason = document.querySelector('input[name="feedbackReason"]:checked')?.value || "other";
+    const question = assistant.question_snapshot || previousUserQuestion(index);
+    const payload = feedbackPayload(
+      assistant,
+      question,
+      -1,
+      reason,
+      els.feedbackComment.value.trim() || null
+    );
+
+    const ok = await sendFeedback(payload);
+    if (ok) {
+      closeModal(els.feedbackModal);
+      markFeedbackButtons(index, -1);
+      showToast("Thanks — this will help improve retrieval and answers");
+    }
+  }
+
+  function markFeedbackButtons(index, rating) {
+    const assistantMessages = [...els.messages.querySelectorAll(".message.assistant")];
+    const assistantIndex = state.messages.slice(0, index + 1).filter((x) => x.role === "assistant").length - 1;
+    const row = assistantMessages[assistantIndex];
+    row?.querySelectorAll(".feedback-btn").forEach((button) => {
+      button.classList.toggle("selected", Number(button.dataset.rating) === rating);
+    });
+  }
+
+  async function track(eventName, properties = {}) {
+    const event = {
+      guest_id: state.user ? null : state.guestId,
+      conversation_id: uuidOrNull(state.activeConversationId),
+      event_name: eventName,
+      properties,
+    };
+
+    // Fire and forget; analytics should never block chat.
+    api("/api/analytics", { method: "POST", body: event }).catch(() => {
+      const local = JSON.parse(localStorage.getItem("bm_local_analytics") || "[]");
+      local.push({ ...event, created_at: new Date().toISOString() });
+      localStorage.setItem("bm_local_analytics", JSON.stringify(local.slice(-400)));
+    });
+  }
+
+  function buildMala() {
+    els.mala.innerHTML = "";
+    for (let i = 0; i < 108; i++) {
+      const bead = document.createElement("span");
+      bead.className = "bead";
+      els.mala.appendChild(bead);
+    }
+  }
+
+  function japKey(name = state.selectedJapName) {
+    return "bm_jap_total_" + encodeURIComponent(name);
+  }
+
+  function loadJapCount() {
+    state.japCount = Number.parseInt(localStorage.getItem(japKey()) || "0", 10) || 0;
     renderJap();
+  }
 
-    q.value = "";
+  function setJapName(name) {
+    const clean = safeText(name).trim();
+    if (!clean) return;
+
+    state.selectedJapName = clean;
+    localStorage.setItem("bm_jap_name", clean);
+
+    const builtIn = [...els.japNameSelect.options].some((option) => option.value === clean && option.value !== "__custom__");
+    if (builtIn) {
+      els.japNameSelect.value = clean;
+      els.customJapRow.classList.remove("show");
+    } else {
+      els.japNameSelect.value = "__custom__";
+      els.customJapName.value = clean;
+      els.customJapRow.classList.add("show");
+    }
+
+    els.japLabel.textContent = clean + " नाम जप";
+    els.japAdd.textContent = "+1";
+    els.searchJapName.textContent = clean;
+    loadJapCount();
+  }
+
+  function incrementJap(amount = 1) {
+    state.japCount += amount;
+    localStorage.setItem(japKey(), String(state.japCount));
+    renderJap();
+  }
+
+  function renderJap() {
+    els.japCount.textContent = state.japCount.toLocaleString("en-IN");
+    els.overlayCount.textContent = state.japCount.toLocaleString("en-IN");
+    const exactMala = state.japCount > 0 && state.japCount % 108 === 0;
+    const progress = exactMala ? 108 : state.japCount % 108;
+    els.mala.querySelectorAll(".bead").forEach((bead, i) => {
+      bead.classList.toggle("active", i < progress);
+    });
+  }
+
+  function bindEvents() {
+    els.chatForm.addEventListener("submit", onSubmit);
+    els.question.addEventListener("input", autoSize);
+    els.question.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        els.chatForm.requestSubmit();
+      }
+    });
+
+    els.newChatBtn.addEventListener("click", () => createConversation({ select: true }));
+    els.chatSearch.addEventListener("input", () => renderConversationList(els.chatSearch.value));
+    els.mobileMenu.addEventListener("click", openSidebar);
+    els.drawerBackdrop.addEventListener("click", closeSidebar);
+    els.themeToggle.addEventListener("click", cycleTheme);
+    els.languageSelect.addEventListener("change", () => {
+      setLanguage(els.languageSelect.value);
+      track("language_changed", { language: state.language });
+    });
+
+    els.authButton.addEventListener("click", () => state.user ? openProfile() : openModal(els.authModal));
+    els.profileButton.addEventListener("click", () => state.user ? openProfile() : openModal(els.authModal));
+    els.googleSignIn.addEventListener("click", signInGoogle);
+    els.emailAuthSubmit.addEventListener("click", submitEmailAuth);
+    els.forgotPassword.addEventListener("click", forgotPassword);
+    els.toggleAuthMode.addEventListener("click", () => {
+      state.authMode = state.authMode === "signin" ? "signup" : "signin";
+      els.authTitle.textContent = state.authMode === "signin" ? "Sign in" : "Create account";
+      els.emailAuthSubmit.textContent = state.authMode === "signin" ? "Sign in" : "Create account";
+      els.toggleAuthMode.textContent = state.authMode === "signin" ? "Create account" : "I already have an account";
+      els.nameField.style.display = state.authMode === "signup" ? "block" : "none";
+      els.forgotPassword.style.visibility = state.authMode === "signin" ? "visible" : "hidden";
+      els.authStatus.textContent = "";
+    });
+
+    els.saveProfile.addEventListener("click", async () => {
+      const fields = {
+        name: els.profileNameInput.value.trim() || displayNameFromUser(state.user),
+        preferred_language: els.profileLanguage.value,
+        theme: els.profileTheme.value,
+      };
+      await updateProfileFields(fields, true);
+      setLanguage(fields.preferred_language, { persist: true });
+      applyTheme(fields.theme);
+      closeModal(els.profileModal);
+    });
+    els.logoutBtn.addEventListener("click", logout);
+    els.saveNewPassword.addEventListener("click", updatePassword);
+    els.submitFeedback.addEventListener("click", submitDetailedFeedback);
+
+    els.japNameSelect.addEventListener("change", () => {
+      if (els.japNameSelect.value === "__custom__") {
+        els.customJapRow.classList.add("show");
+        els.customJapName.focus();
+      } else {
+        setJapName(els.japNameSelect.value);
+      }
+    });
+    els.saveCustomJap.addEventListener("click", () => {
+      const value = els.customJapName.value.trim();
+      if (!value) return showToast("नाम लिखें");
+      setJapName(value);
+      showToast(value + " चुना गया");
+    });
+    els.customJapName.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        els.saveCustomJap.click();
+      }
+    });
+    els.japAdd.addEventListener("click", () => {
+      incrementJap(1);
+      showToast(state.selectedJapName + " नाम जप +1");
+    });
+
+    document.querySelectorAll("[data-close]").forEach((button) => {
+      button.addEventListener("click", () => closeModal($(button.dataset.close)));
+    });
+
+    document.querySelectorAll(".modal-backdrop").forEach((backdrop) => {
+      backdrop.addEventListener("click", (event) => {
+        if (event.target === backdrop) closeModal(backdrop);
+      });
+    });
+
+    matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", () => {
+      if (state.theme === "system") applyTheme("system");
+    });
+  }
+
+  function openProfile() {
+    if (!state.user) return openModal(els.authModal);
+    els.profileNameInput.value = displayNameFromUser(state.user);
+    els.profileLanguage.value = state.profile?.preferred_language || state.language || "auto";
+    els.profileTheme.value = state.profile?.theme || state.theme || "system";
+    openModal(els.profileModal);
+  }
+
+  async function boot() {
+    applyTheme(state.theme);
+    setLanguage(state.language, { persist: false });
+    buildMala();
+    setJapName(state.selectedJapName);
+    bindEvents();
     autoSize();
-    status.textContent = "नई बातचीत शुरू करें।";
-    q.focus();
+    await initAuth();
+
+  }
+
+  boot().catch((error) => {
+    console.error(error);
+    showToast("The app could not finish loading");
   });
-
-  japNameSelect.addEventListener("change", () => {
-    if(japNameSelect.value === "__custom__"){
-      customJapRow.classList.add("show");
-      customJapName.focus();
-      return;
-    }
-
-    customJapRow.classList.remove("show");
-    setJapName(japNameSelect.value);
-  });
-
-  saveCustomJap.addEventListener("click", () => {
-    const value = customJapName.value.trim();
-
-    if(!value){
-      showToast("नाम लिखें");
-      customJapName.focus();
-      return;
-    }
-
-    setJapName(value);
-    showToast(value + " चुना गया");
-  });
-
-  customJapName.addEventListener("keydown", event => {
-    if(event.key === "Enter"){
-      event.preventDefault();
-      saveCustomJap.click();
-    }
-  });
-
-  buildAura();
-  buildMala();
-  restoreHistory();
-  setJapName(selectedJapName);
-  renderJap();
-  autoSize();
 })();

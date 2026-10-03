@@ -4,6 +4,7 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Literal
 
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,9 +15,11 @@ from pydantic import BaseModel, Field, field_validator
 from . import db
 from .config import settings
 from .llm import generate_answer_result, rewrite_query
+from .language import render_answer_language
 from .budget import deadline, request_id
 from .retrieval import retrieve
 from .search_backend import ensure_collection
+from .v1_api import router as v1_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -51,6 +54,7 @@ api = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+api.include_router(v1_router)
 api.mount('/assets', StaticFiles(directory=Path(__file__).parent / 'static'), name='assets')
 
 
@@ -60,9 +64,16 @@ raw_origins = os.getenv(
 )
 allow_origins = [x.strip() for x in raw_origins.split(",") if x.strip()]
 
+class HistoryMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=12000)
+
+
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=5000)
     conversation_id: str | None = None
+    history: list[HistoryMessage] | None = Field(default=None, max_length=20)
+    preferred_language: Literal["auto", "hi", "hinglish", "en"] = "auto"
 
     @field_validator('question')
     @classmethod
@@ -129,7 +140,15 @@ def _chat(req: ChatRequest, trace_id: str, started: float):
     conversation_id = req.conversation_id or str(uuid.uuid4())
     question = req.question.strip()
 
-    history = db.get_messages(conversation_id, limit=8)
+    if req.history:
+        history = [
+            {"role": item.role, "content": item.content.strip(), "metadata": {}}
+            for item in req.history[-8:]
+            if item.content.strip()
+        ]
+    else:
+        history = db.get_messages(conversation_id, limit=8)
+
     log = logging.getLogger(__name__)
     log.info('request=%s phase=rewrite', trace_id)
     standalone_query = rewrite_query(question, history)
@@ -146,7 +165,12 @@ def _chat(req: ChatRequest, trace_id: str, started: float):
         evidence_level=evidence["level"],
         selected_sources=selected_sources,
     )
-    answer = generated['answer']
+    answer, response_language = render_answer_language(
+        answer=generated["answer"],
+        question=question,
+        preference=req.preferred_language,
+        quotes=generated.get("quotes", []),
+    )
 
     db.add_message(conversation_id, "user", question)
     db.add_message(
@@ -156,6 +180,7 @@ def _chat(req: ChatRequest, trace_id: str, started: float):
         metadata={
             "standalone_query": standalone_query,
             "evidence_level": evidence["level"],
+            "response_language": response_language,
             "sources": [
                 {
                     "video_id": s["video_id"],
@@ -184,6 +209,7 @@ def _chat(req: ChatRequest, trace_id: str, started: float):
         "evidence_level": evidence["level"],
         "evidence_reason": evidence.get("reason"),
         "answer": answer,
+        "response_language": response_language,
         "sources": public_sources,
         'request_id':trace_id,
         'elapsed_ms':round((time.monotonic()-started)*1000),
