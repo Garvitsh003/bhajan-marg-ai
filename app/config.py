@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     whisper_compute_type: str = "int8"
 
     ytdlp_cookies_from_browser: str = ""
-    admin_token: str = "change-me"
+    admin_token: str = ""
 
     def ensure_dirs(self):
         for p in (self.data_dir, self.transcript_dir, self.temp_dir):

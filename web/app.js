@@ -288,16 +288,24 @@
       els.profileName.textContent = name;
       els.profileEmail.textContent = state.user.email || "Signed in";
       els.authButton.textContent = name.split(" ")[0] || "Profile";
+      els.profileButton.setAttribute(
+        "aria-label",
+        "Open profile and account settings"
+      );
       if (avatar) {
         els.profileAvatar.innerHTML = `<img src="${esc(avatar)}" alt="" style="width:100%;height:100%;object-fit:cover">`;
       } else {
         els.profileAvatar.textContent = avatarInitial(name);
       }
     } else {
-      els.profileName.textContent = "Guest";
-      els.profileEmail.textContent = "Chats saved on this device";
+      els.profileName.textContent = "Sign in";
+      els.profileEmail.textContent = "Save & sync your conversations";
       els.authButton.textContent = "Sign in";
       els.profileAvatar.textContent = "अ";
+      els.profileButton.setAttribute(
+        "aria-label",
+        "Sign in or create account"
+      );
     }
   }
 
@@ -839,6 +847,13 @@
         <span class="evidence-badge ${esc(message.evidence_level || "none")}">${esc(evidenceLabel(message))}</span>
         ${message.standalone_query ? `<span class="query-label" title="${esc(message.standalone_query)}">${esc(message.standalone_query)}</span>` : ""}
       `;
+      if (["hi", "hinglish", "en"].includes(message.response_language)) {
+        const languageBadge = document.createElement("span");
+        languageBadge.className = "query-label response-lang-badge";
+        languageBadge.dataset.responseLanguage = message.response_language;
+        languageBadge.textContent = `Answer language: ${message.response_language === "hi" ? "हिन्दी" : message.response_language === "hinglish" ? "Hinglish" : "English"}`;
+        meta.appendChild(languageBadge);
+      }
       bubble.appendChild(meta);
 
       splitAnswer(message.content).forEach((section) => {
@@ -1316,7 +1331,15 @@
     });
 
     els.authButton.addEventListener("click", () => state.user ? openProfile() : openModal(els.authModal));
-    els.profileButton.addEventListener("click", () => state.user ? openProfile() : openModal(els.authModal));
+    els.profileButton.addEventListener("click", () => {
+      closeSidebar();
+
+      if (state.user) {
+        openProfile();
+      } else {
+        openModal(els.authModal);
+      }
+    });
     els.googleSignIn.addEventListener("click", signInGoogle);
     els.emailAuthSubmit.addEventListener("click", submitEmailAuth);
     els.forgotPassword.addEventListener("click", forgotPassword);

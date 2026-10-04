@@ -766,8 +766,20 @@ def save_analytics(body: AnalyticsRequest, request: Request):
 
 
 def _require_admin(token: str | None) -> None:
-    if not token or token != settings.admin_token:
-        raise HTTPException(status_code=401, detail="Invalid admin token")
+    configured = str(settings.admin_token or "").strip()
+
+    # Fail closed if production ADMIN_TOKEN was never configured.
+    if not configured or configured == "change-me":
+        raise HTTPException(
+            status_code=503,
+            detail="Admin API is not configured",
+        )
+
+    if not token or not secrets.compare_digest(token, configured):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid admin token",
+        )
 
 
 @router.get("/api/admin/v1-analytics")
@@ -795,9 +807,9 @@ def analytics_summary(x_admin_token: str | None = Header(default=None)):
         ).fetchall()
         result["most_referenced_videos"] = conn.execute(
             """
-            SELECT video_id, MAX(video_title) AS video_title, COUNT(*) AS references
+            SELECT video_id, MAX(video_title) AS video_title, COUNT(*) AS "references"
             FROM message_sources WHERE video_id IS NOT NULL
-            GROUP BY video_id ORDER BY references DESC LIMIT 15
+            GROUP BY video_id ORDER BY "references" DESC LIMIT 15
             """
         ).fetchall()
         result["most_asked_questions"] = conn.execute(

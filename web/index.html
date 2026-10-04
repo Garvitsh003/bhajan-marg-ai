@@ -305,6 +305,100 @@
       .lang-select{max-width:112px}
       .welcome{min-height:50vh}
     }
+  
+    /* MOBILE ACCOUNT / DRAWER FIX */
+    /* ======================================================
+       MOBILE ACCOUNT / DRAWER FIX
+       Keep profile/sign-in visible on short mobile viewports.
+       ====================================================== */
+    @media(max-width:860px){
+      .sidebar{
+        height:100dvh;
+        min-height:0;
+        max-height:100dvh;
+        top:0;
+        bottom:auto;
+
+        padding-top:max(18px, env(safe-area-inset-top));
+        padding-bottom:max(12px, env(safe-area-inset-bottom));
+
+        overflow:hidden;
+      }
+
+      /*
+       * This is the only flexible section on mobile.
+       * It shrinks before the account/profile controls do.
+       */
+      .conversation-list{
+        flex:1 1 0;
+        min-height:0;
+        overflow-y:auto;
+        overscroll-behavior:contain;
+      }
+
+      .jap-card{
+        flex:0 0 auto;
+      }
+
+      /*
+       * Always-visible account entry point.
+       */
+      .sidebar-bottom{
+        flex:0 0 auto;
+        margin-top:8px;
+        padding-top:9px;
+        border-top:1px solid var(--border);
+        background:var(--panel);
+      }
+
+      .profile-button{
+        min-height:54px;
+        background:var(--panel-2);
+        border:1px solid var(--border);
+        padding:9px 10px;
+      }
+
+      .profile-button:active{
+        transform:scale(.99);
+      }
+
+      .profile-copy strong{
+        font-size:13px;
+      }
+
+      .profile-copy span{
+        font-size:10px;
+        margin-top:2px;
+      }
+    }
+
+    /*
+     * Extra protection for shorter phones such as older iPhones.
+     */
+    @media(max-width:520px) and (max-height:760px){
+      .brand{
+        padding-bottom:10px;
+      }
+
+      .side-label{
+        margin-top:12px;
+      }
+
+      .jap-card{
+        margin-top:7px;
+        padding:9px;
+      }
+
+      .mala{
+        margin-top:7px;
+        gap:2px;
+      }
+
+      .sidebar-bottom{
+        margin-top:6px;
+      }
+    }
+
   </style>
 </head>
 <body>
@@ -524,5 +618,6 @@
 
 <script src="./config.js"></script>
 <script src="./app.js"></script>
+<script src="./live-language.js"></script>
 </body>
 </html>
