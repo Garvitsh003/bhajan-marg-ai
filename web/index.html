@@ -399,6 +399,56 @@
       }
     }
 
+  
+    /* User-testing polish: chat actions */
+    .conversation-menu{
+      opacity:.5;
+      cursor:pointer;
+      font-weight:800;
+      letter-spacing:.08em;
+    }
+    .conversation-item:hover .conversation-menu,
+    .conversation-item.active .conversation-menu,
+    .conversation-menu:focus-visible{opacity:1}
+    .conversation-action-modal{max-width:430px}
+    .conversation-action-buttons{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:9px;
+      margin-top:14px;
+    }
+    .danger-btn{
+      border:1px solid color-mix(in srgb, #b42318 38%, var(--border));
+      background:color-mix(in srgb, #b42318 8%, var(--card));
+      color:#b42318;
+      border-radius:12px;
+      padding:10px 14px;
+      font-weight:800;
+      cursor:pointer;
+    }
+    .danger-btn:hover,.danger-btn.armed{
+      background:#b42318;
+      border-color:#b42318;
+      color:white;
+    }
+    .conversation-action-status{
+      min-height:18px;
+      margin-top:8px;
+      color:var(--muted);
+      font-size:12px;
+      line-height:1.5;
+    }
+    @media(max-width:860px){
+      .conversation-menu{
+        opacity:1;
+        min-width:38px;
+        min-height:38px;
+      }
+    }
+    @media(max-width:520px){
+      .conversation-action-buttons{grid-template-columns:1fr}
+    }
+
   </style>
 </head>
 <body>
@@ -570,6 +620,28 @@
     <div class="auth-actions">
       <button class="primary-btn" id="saveProfile" type="button">Save</button>
       <button class="soft-btn" id="logoutBtn" type="button">Log out</button>
+    </div>
+  </div>
+</div>
+
+
+<div class="modal-backdrop" id="conversationModal">
+  <div class="modal conversation-action-modal" role="dialog" aria-modal="true" aria-labelledby="conversationModalTitle">
+    <div class="modal-head">
+      <h2 id="conversationModalTitle">Chat options</h2>
+      <button class="icon-btn small-close" type="button" data-close="conversationModal" aria-label="Close">×</button>
+    </div>
+
+    <label class="field">
+      <span id="conversationTitleLabel">Chat name</span>
+      <input id="conversationTitleInput" type="text" maxlength="120" autocomplete="off" placeholder="Chat name">
+    </label>
+
+    <div class="conversation-action-status" id="conversationActionStatus" aria-live="polite"></div>
+
+    <div class="conversation-action-buttons">
+      <button class="primary-btn" id="saveConversationTitle" type="button">Save name</button>
+      <button class="danger-btn" id="deleteConversationButton" type="button">Delete chat</button>
     </div>
   </div>
 </div>

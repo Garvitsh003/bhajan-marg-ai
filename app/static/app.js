@@ -75,6 +75,15 @@
     feedbackModal: $("feedbackModal"),
     feedbackComment: $("feedbackComment"),
     submitFeedback: $("submitFeedback"),
+
+    conversationModal: $("conversationModal"),
+    conversationModalTitle: $("conversationModalTitle"),
+    conversationTitleLabel: $("conversationTitleLabel"),
+    conversationTitleInput: $("conversationTitleInput"),
+    saveConversationTitle: $("saveConversationTitle"),
+    deleteConversationButton: $("deleteConversationButton"),
+    conversationActionStatus: $("conversationActionStatus"),
+
     resetModal: $("resetModal"),
     newPassword: $("newPassword"),
     saveNewPassword: $("saveNewPassword"),
@@ -100,6 +109,8 @@
     authMode: "signin",
     busy: false,
     feedbackTarget: null,
+    conversationActionId: null,
+    conversationDeleteArmed: false,
     theme: localStorage.getItem("bm_theme") || "system",
     language: localStorage.getItem("bm_language") || "auto",
     guestId: localStorage.getItem("bm_guest_id") || crypto.randomUUID(),
@@ -109,12 +120,107 @@
   };
   localStorage.setItem("bm_guest_id", state.guestId);
 
-  const STAGES = [
-    "संबंधित वचन खोज रहे हैं…",
-    "स्रोतों की प्रासंगिकता जाँच रहे हैं…",
-    "सीधे उत्तर का अंश चुन रहे हैं…",
-    "उत्तर को स्रोतों से मिला रहे हैं…",
-  ];
+  const SEARCH_STAGES = {
+    hi: [
+      "संबंधित वचन खोज रहे हैं…",
+      "स्रोतों की प्रासंगिकता जाँच रहे हैं…",
+      "सीधे उत्तर का अंश चुन रहे हैं…",
+      "उत्तर को स्रोतों से मिला रहे हैं…",
+    ],
+    hinglish: [
+      "Sambandhit vachan khoj rahe hain…",
+      "Sroton ki prasangikta jaanch rahe hain…",
+      "Seedhe uttar ka ansh chun rahe hain…",
+      "Uttar ko sroton se mila rahe hain…",
+    ],
+    en: [
+      "Finding related teachings…",
+      "Checking source relevance…",
+      "Selecting the direct answer span…",
+      "Grounding the answer in the sources…",
+    ],
+  };
+
+  function resolvedUiLanguage() {
+    const live = window.BHAJAN_ACTIVE_LANGUAGE?.();
+    if (["hi", "hinglish", "en"].includes(live)) return live;
+    if (["hi", "hinglish", "en"].includes(state.language)) return state.language;
+
+    const value = safeText(els.question?.value).trim();
+    if (/[ऀ-ॿ]/.test(value)) return "hi";
+
+    const lower = value.toLowerCase();
+    const hinglishHints = [
+      "kya", "kaise", "kyu", "kyun", "mann", "man", "bhagwan",
+      "naam", "jap", "gussa", "bhakti", "mujhe", "nahi", "hai", "karu",
+    ];
+    if (hinglishHints.filter((word) => lower.includes(word)).length >= 2) {
+      return "hinglish";
+    }
+    return "en";
+  }
+
+  function searchStatusText() {
+    const lang = resolvedUiLanguage();
+    if (lang === "hi") return "सभी उपलब्ध सत्संगों में खोज रहे हैं…";
+    if (lang === "hinglish") return "Sabhi uplabdh satsangon mein khoj rahe hain…";
+    return "Searching all available satsangs…";
+  }
+
+  function answerStatusText(data) {
+    const lang = resolvedUiLanguage();
+    const count = data.sources?.length || 0;
+
+    if (data.evidence_level === "none") {
+      if (lang === "hi") return "पर्याप्त सीधा स्रोत नहीं मिला।";
+      if (lang === "hinglish") return "Paryapt seedha srot nahi mila.";
+      return "No sufficient direct source found.";
+    }
+
+    if (lang === "hi") return `${count} स्रोतों के आधार पर उत्तर।`;
+    if (lang === "hinglish") return `${count} srot ke aadhar par uttar.`;
+    return `Answer grounded with ${count} source${count === 1 ? "" : "s"}.`;
+  }
+
+  function conversationUiText(key) {
+    const lang = resolvedUiLanguage();
+    const copy = {
+      hi: {
+        options: "चैट विकल्प",
+        name: "चैट का नाम",
+        save: "नाम सहेजें",
+        delete: "चैट हटाएँ",
+        deletePermanent: "हाँ, चैट हमेशा के लिए हटाएँ",
+        confirmDelete: "यह चैट और इसके सभी संदेश हटा दिए जाएँगे। पुष्टि के लिए नीचे दिए गए लाल बटन को दोबारा दबाएँ।",
+        renamed: "चैट का नाम बदल दिया गया",
+        deleted: "चैट हटा दी गई",
+        emptyName: "चैट का नाम लिखें",
+      },
+      hinglish: {
+        options: "Chat ke vikalp",
+        name: "Chat ka naam",
+        save: "Naam save karein",
+        delete: "Chat hataayein",
+        deletePermanent: "Haan, chat hamesha ke liye hataayein",
+        confirmDelete: "Yeh chat aur iske saare sandesh hata diye jayenge. Pushti ke liye neeche laal button dobara dabayein.",
+        renamed: "Chat ka naam badal diya gaya",
+        deleted: "Chat hata di gayi",
+        emptyName: "Chat ka naam likhein",
+      },
+      en: {
+        options: "Chat options",
+        name: "Chat name",
+        save: "Save name",
+        delete: "Delete chat",
+        deletePermanent: "Yes, delete chat permanently",
+        confirmDelete: "This chat and all of its messages will be deleted. Press the red button again to confirm.",
+        renamed: "Chat renamed",
+        deleted: "Chat deleted",
+        emptyName: "Enter a chat name",
+      },
+    };
+    return (copy[lang] || copy.en)[key];
+  }
 
   function safeText(value) {
     return String(value ?? "");
@@ -532,20 +638,64 @@
     }
   }
 
-  async function conversationActions(conv) {
-    const action = prompt(
-      `Chat: ${conv.title}\n\nType:\nR = rename\nD = delete\nAnything else = cancel`
-    );
-    if (!action) return;
+  function resetConversationActionModal() {
+    state.conversationDeleteArmed = false;
+    els.conversationActionStatus.textContent = "";
+    els.deleteConversationButton.classList.remove("armed");
+    els.deleteConversationButton.textContent = conversationUiText("delete");
+  }
 
-    if (action.trim().toLowerCase() === "r") {
-      const title = prompt("New chat name", conv.title || "");
-      if (!title?.trim()) return;
-      await renameConversation(conv.id, title.trim().slice(0, 120));
-    } else if (action.trim().toLowerCase() === "d") {
-      if (!confirm(`Delete "${conv.title}"?`)) return;
-      await deleteConversation(conv.id);
+  function conversationActions(conv) {
+    state.conversationActionId = conv.id;
+    resetConversationActionModal();
+
+    els.conversationModalTitle.textContent = conversationUiText("options");
+    els.conversationTitleLabel.textContent = conversationUiText("name");
+    els.saveConversationTitle.textContent = conversationUiText("save");
+    els.conversationTitleInput.value = conv.title || "";
+
+    openModal(els.conversationModal);
+
+    setTimeout(() => {
+      els.conversationTitleInput.focus();
+      els.conversationTitleInput.select();
+    }, 0);
+  }
+
+  async function saveConversationRename() {
+    const id = state.conversationActionId;
+    if (!id) return;
+
+    const title = els.conversationTitleInput.value.trim().slice(0, 120);
+    if (!title) {
+      els.conversationActionStatus.textContent = conversationUiText("emptyName");
+      return;
     }
+
+    await renameConversation(id, title);
+    closeModal(els.conversationModal);
+    state.conversationActionId = null;
+    resetConversationActionModal();
+    showToast(conversationUiText("renamed"));
+  }
+
+  async function handleConversationDelete() {
+    const id = state.conversationActionId;
+    if (!id) return;
+
+    if (!state.conversationDeleteArmed) {
+      state.conversationDeleteArmed = true;
+      els.conversationActionStatus.textContent = conversationUiText("confirmDelete");
+      els.deleteConversationButton.textContent = conversationUiText("deletePermanent");
+      els.deleteConversationButton.classList.add("armed");
+      return;
+    }
+
+    await deleteConversation(id);
+    closeModal(els.conversationModal);
+    state.conversationActionId = null;
+    resetConversationActionModal();
+    showToast(conversationUiText("deleted"));
   }
 
   async function createConversation({ select = true } = {}) {
@@ -604,6 +754,7 @@
       guestDeleteConversation(id);
     }
 
+    clearJapForConversation(id);
     state.conversations = state.conversations.filter((x) => x.id !== id);
     if (state.activeConversationId === id) {
       state.activeConversationId = null;
@@ -621,6 +772,9 @@
     state.activeConversationId = id;
     state.activeConversationTitle = conv.title || "New chat";
     els.contextTitle.textContent = state.activeConversationTitle;
+
+    // Naam-jap belongs to this conversation. A new chat starts at 0.
+    loadJapCount();
 
     if (state.user) {
       localStorage.setItem("bm_cloud_conversation", id);
@@ -679,8 +833,8 @@
         <div class="welcome-mark">राधा</div>
         <h1>What would you like to understand today?</h1>
         <p>
-          Your question is searched across the available Bhajan Marg satsang corpus.
-          Direct teaching is shown only when the sources support it. AI explanation is kept separate.
+          Your question is searched across the available Bhajan Marg satsangs.
+          Direct teaching is shown only when the available sources support it. AI interpretation is shown separately.
         </p>
         <div class="suggestions">
           <button class="suggestion" type="button">बार-बार क्रोध आए तो क्या करें?</button>
@@ -998,19 +1152,26 @@
   function beginSearch() {
     let stage = 0;
     const started = Date.now();
+    const lang = resolvedUiLanguage();
+    const stages = SEARCH_STAGES[lang] || SEARCH_STAGES.en;
+
     els.searchJapName.textContent = state.selectedJapName;
-    els.searchStage.textContent = STAGES[0];
-    els.searchTime.textContent = "0 सेकंड";
+    els.searchStage.textContent = stages[0];
+    els.searchTime.textContent =
+      lang === "hi" ? "0 सेकंड" : (lang === "hinglish" ? "0 second" : "0s");
     els.searchOverlay.classList.add("show");
 
     state.searchTimers.push(setInterval(() => {
       const sec = Math.floor((Date.now() - started) / 1000);
-      els.searchTime.textContent = `${sec} सेकंड`;
+      els.searchTime.textContent =
+        lang === "hi"
+          ? `${sec} सेकंड`
+          : (lang === "hinglish" ? `${sec} second` : `${sec}s`);
     }, 500));
 
     state.searchTimers.push(setInterval(() => {
-      stage = (stage + 1) % STAGES.length;
-      els.searchStage.textContent = STAGES[stage];
+      stage = (stage + 1) % stages.length;
+      els.searchStage.textContent = stages[stage];
     }, 4200));
 
     state.searchTimers.push(setInterval(() => incrementJap(1), 900));
@@ -1081,7 +1242,7 @@
     autoSize();
     scrollBottom();
     beginSearch();
-    els.status.textContent = "Searching the satsang corpus…";
+    els.status.textContent = searchStatusText();
     track("question_asked", { language: state.language, question: question.slice(0, 500), conversation_id: state.activeConversationId });
 
     try {
@@ -1094,9 +1255,7 @@
       await loadConversations();
       renderConversationList(els.chatSearch.value);
 
-      els.status.textContent = data.evidence_level === "none"
-        ? "No sufficient direct source found."
-        : `Answer grounded with ${data.sources?.length || 0} source${(data.sources?.length || 0) === 1 ? "" : "s"}.`;
+      els.status.textContent = answerStatusText(data);
 
       track("answer_received", {
         language: data.response_language || state.language,
@@ -1262,12 +1421,36 @@
     }
   }
 
-  function japKey(name = state.selectedJapName) {
-    return "bm_jap_total_" + encodeURIComponent(name);
+  function japKey(
+    name = state.selectedJapName,
+    conversationId = state.activeConversationId
+  ) {
+    const chat = conversationId || "no-chat";
+    return (
+      "bm_jap_chat_" +
+      encodeURIComponent(chat) +
+      "_" +
+      encodeURIComponent(name)
+    );
+  }
+
+  function clearJapForConversation(conversationId) {
+    if (!conversationId) return;
+
+    const prefix = "bm_jap_chat_" + encodeURIComponent(conversationId) + "_";
+    const remove = [];
+
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(prefix)) remove.push(key);
+    }
+
+    remove.forEach((key) => localStorage.removeItem(key));
   }
 
   function loadJapCount() {
-    state.japCount = Number.parseInt(localStorage.getItem(japKey()) || "0", 10) || 0;
+    state.japCount =
+      Number.parseInt(localStorage.getItem(japKey()) || "0", 10) || 0;
     renderJap();
   }
 
@@ -1368,6 +1551,15 @@
     els.saveNewPassword.addEventListener("click", updatePassword);
     els.submitFeedback.addEventListener("click", submitDetailedFeedback);
 
+    els.saveConversationTitle.addEventListener("click", saveConversationRename);
+    els.deleteConversationButton.addEventListener("click", handleConversationDelete);
+    els.conversationTitleInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        saveConversationRename();
+      }
+    });
+
     els.japNameSelect.addEventListener("change", () => {
       if (els.japNameSelect.value === "__custom__") {
         els.customJapRow.classList.add("show");
@@ -1394,7 +1586,14 @@
     });
 
     document.querySelectorAll("[data-close]").forEach((button) => {
-      button.addEventListener("click", () => closeModal($(button.dataset.close)));
+      button.addEventListener("click", () => {
+        const modal = $(button.dataset.close);
+        closeModal(modal);
+        if (modal === els.conversationModal) {
+          state.conversationActionId = null;
+          resetConversationActionModal();
+        }
+      });
     });
 
     document.querySelectorAll(".modal-backdrop").forEach((backdrop) => {

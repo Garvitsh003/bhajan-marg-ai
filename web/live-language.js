@@ -22,13 +22,13 @@
       guest: "अतिथि", guestSaved: "चैट इस डिवाइस पर सेव हैं",
       disclaimer: "AI से गलती हो सकती है। महत्वपूर्ण संदर्भ मूल सत्संग में सत्यापित करें।",
       welcomeTitle: "आज आप क्या समझना चाहेंगे?",
-      welcomeBody: "आपका प्रश्न उपलब्ध Bhajan Marg सत्संग corpus में खोजा जाता है। सीधी शिक्षा तभी दिखाई जाती है जब स्रोत उसका समर्थन करें। AI व्याख्या अलग रखी जाती है।",
+      welcomeBody: "आपका प्रश्न भजन मार्ग के उपलब्ध सत्संगों में खोजा जाता है। सीधी शिक्षा तभी दिखाई जाती है जब उपलब्ध स्रोत उसका समर्थन करें। AI द्वारा तैयार व्याख्या अलग से दिखाई जाती है।",
       recentEmpty: "आपकी हाल की चैट यहाँ दिखेंगी।", noMatch: "कोई मिलती-जुलती चैट नहीं मिली।",
       sources: "मूल सत्संग स्रोत", sourceOne: "1 स्रोत", sourceMany: n => `${n} स्रोत`,
       helpful: "👍 सहायक", notHelpful: "👎 सहायक नहीं", why: "ये स्रोत क्यों:",
       direct: "सीधा सत्संग प्रमाण", related: "संबंधित शिक्षा", none: "पर्याप्त स्रोत प्रमाण नहीं",
       sourceOnly: "स्रोत मिला · साफ उत्तर-अंश उपलब्ध नहीं",
-      answerLanguage: "उत्तर भाषा", searchTitle: "पूरे सत्संग में खोज रहे हैं",
+      answerLanguage: "उत्तर भाषा", searchTitle: "सभी उपलब्ध सत्संगों में खोज रहे हैं",
       authTitle: "साइन इन", google: "G  Google से जारी रखें", create: "अकाउंट बनाएँ",
       forgot: "पासवर्ड भूल गए?", guestContinue: "अतिथि के रूप में जारी रखें",
       profile: "प्रोफ़ाइल और पसंद", save: "सेव करें", logout: "लॉग आउट",
@@ -42,13 +42,13 @@
       guest: "Guest", guestSaved: "Chats is device par saved hain",
       disclaimer: "AI galti kar sakta hai. Important context original satsang mein verify karein.",
       welcomeTitle: "Aaj aap kya samajhna chahenge?",
-      welcomeBody: "Aapka question available Bhajan Marg satsang corpus mein search hota hai. Direct teaching tabhi dikhayi jaati hai jab sources usse support karein. AI explanation alag rakhi jaati hai.",
+      welcomeBody: "Aapka prashn Bhajan Marg ke uplabdh satsangon mein khoja jaata hai. Seedhi shiksha tabhi dikhayi jaati hai jab uplabdh srot uska samarthan karein. AI dwara taiyar vyakhya alag se dikhayi jaati hai.",
       recentEmpty: "Aapki recent chats yahan dikhenge.", noMatch: "Matching chats nahi mili.",
       sources: "Original satsang sources", sourceOne: "1 source", sourceMany: n => `${n} sources`,
       helpful: "👍 Helpful", notHelpful: "👎 Not helpful", why: "Ye sources kyun:",
       direct: "Direct satsang evidence", related: "Related teaching", none: "Enough source evidence nahi",
       sourceOnly: "Source mila · clean answer span available nahi",
-      answerLanguage: "Answer language", searchTitle: "Poore satsang mein search kar rahe hain",
+      answerLanguage: "Answer language", searchTitle: "Sabhi uplabdh satsangon mein khoj rahe hain",
       authTitle: "Sign in", google: "G  Google se continue karein", create: "Account banayein",
       forgot: "Password bhool gaye?", guestContinue: "Guest ke roop mein continue karein",
       profile: "Profile & preferences", save: "Save", logout: "Log out",
@@ -62,13 +62,13 @@
       guest: "Guest", guestSaved: "Chats saved on this device",
       disclaimer: "AI may make mistakes. Verify important context in the original satsang.",
       welcomeTitle: "What would you like to understand today?",
-      welcomeBody: "Your question is searched across the available Bhajan Marg satsang corpus. Direct teaching is shown only when the sources support it. AI explanation is kept separate.",
+      welcomeBody: "Your question is searched across the available Bhajan Marg satsangs. Direct teaching is shown only when the available sources support it. AI interpretation is shown separately.",
       recentEmpty: "Your recent chats will appear here.", noMatch: "No matching chats.",
       sources: "Original satsang sources", sourceOne: "1 source", sourceMany: n => `${n} sources`,
       helpful: "👍 Helpful", notHelpful: "👎 Not helpful", why: "Why these sources:",
       direct: "Direct satsang evidence", related: "Related teaching", none: "No sufficient source evidence",
       sourceOnly: "Source found · clean answer span unavailable",
-      answerLanguage: "Answer language", searchTitle: "Searching the complete satsang corpus",
+      answerLanguage: "Answer language", searchTitle: "Searching all available satsangs",
       authTitle: "Sign in", google: "G  Continue with Google", create: "Create account",
       forgot: "Forgot password?", guestContinue: "Continue as guest",
       profile: "Profile & preferences", save: "Save", logout: "Log out",
@@ -334,6 +334,9 @@
     childList: true,
     subtree: true
   });
+
+  window.BHAJAN_ACTIVE_LANGUAGE = activeLang;
+  window.BHAJAN_APPLY_LANGUAGE = apply;
 
   apply();
 })();
