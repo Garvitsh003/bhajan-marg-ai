@@ -22,6 +22,8 @@ from psycopg.types.json import Jsonb
 from .config import settings
 from .product_db import configured as database_configured
 from .product_db import connection
+from .quality import attach_feedback, attach_message, version_snapshot
+from .source_localization import localize_source
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -277,12 +279,39 @@ class FeedbackRequest(BaseModel):
     guest_id: str | None = Field(default=None, max_length=128)
     conversation_id: uuid.UUID | None = None
     message_id: uuid.UUID | None = None
+    request_id: str | None = Field(default=None, max_length=128)
     question: str = Field(default="", max_length=20000)
     answer: str = Field(default="", max_length=100000)
     retrieved_sources: list[dict[str, Any]] = Field(default_factory=list)
     rating: Literal[-1, 1]
     reason: str | None = Field(default=None, max_length=80)
     comment: str | None = Field(default=None, max_length=5000)
+    voice_transcript: str | None = Field(default=None, max_length=10000)
+    client_metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class SourceLocalizeRequest(BaseModel):
+    target_language: Literal["hi", "hinglish", "en"]
+    source: SourceInput
+
+
+class QualityCasePatch(BaseModel):
+    review_status: Literal["unreviewed", "needs_review", "reviewed", "resolved"] | None = None
+    failure_category: Literal[
+        "corpus", "transcript", "chunking", "query_understanding",
+        "retrieval", "reranking", "generation", "citation",
+        "conversation_context", "language", "other"
+    ] | None = None
+    review_notes: str | None = Field(default=None, max_length=20000)
+    expected_sources: list[dict[str, Any]] | None = None
+
+
+class GoldenCaseCreate(BaseModel):
+    expected_topic: str | None = Field(default=None, max_length=500)
+    expected_sources: list[dict[str, Any]] = Field(default_factory=list)
+    acceptable_answer: list[str] = Field(default_factory=list)
+    unacceptable_behavior: list[str] = Field(default_factory=list)
+    notes: str | None = Field(default=None, max_length=20000)
 
 
 class AnalyticsRequest(BaseModel):
@@ -721,6 +750,18 @@ def create_message(conversation_id: uuid.UUID, body: MessageCreate, request: Req
         )
         row = conn.execute("SELECT * FROM messages WHERE id=%s", (mid,)).fetchone()
         row["message_sources"] = source_public
+
+    if body.role == "assistant" and body.request_id:
+        try:
+            attach_message(
+                request_id=body.request_id,
+                message_id=mid,
+                conversation_id=conversation_id,
+                user_id=user["id"],
+            )
+        except Exception:
+            log.exception("Failed linking assistant message to quality case")
+
     return row
 
 
@@ -728,21 +769,45 @@ def create_message(conversation_id: uuid.UUID, body: MessageCreate, request: Req
 def save_feedback(body: FeedbackRequest, request: Request):
     user = _decode_session(request, required=False)
     fid = uuid.uuid4()
+    guest_id = body.guest_id if not user else None
+
     with connection() as conn:
         conn.execute(
             """
             INSERT INTO feedback(
-                id,user_id,guest_id,conversation_id,message_id,question,answer,
-                retrieved_sources,rating,reason,comment
-            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                id,user_id,guest_id,conversation_id,message_id,request_id,question,answer,
+                retrieved_sources,rating,reason,comment,voice_transcript,client_metadata
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             """,
             (
-                fid, user["id"] if user else None, body.guest_id if not user else None,
-                body.conversation_id, body.message_id, body.question, body.answer,
+                fid, user["id"] if user else None, guest_id,
+                body.conversation_id, body.message_id, body.request_id, body.question, body.answer,
                 Jsonb(body.retrieved_sources), body.rating, body.reason, body.comment,
+                body.voice_transcript, Jsonb(body.client_metadata),
             ),
         )
-    return {"ok": True, "id": str(fid)}
+
+    try:
+        attach_feedback(
+            request_id=body.request_id,
+            feedback_id=fid,
+            user_id=user["id"] if user else None,
+            guest_id=guest_id,
+            rating=body.rating,
+            reason=body.reason,
+            comment=body.comment,
+            voice_transcript=body.voice_transcript,
+        )
+    except Exception:
+        log.exception("Failed linking feedback to quality case")
+
+    return {"ok": True, "id": str(fid), "persisted": True}
+
+
+@router.post("/api/source-localize")
+def source_localize(body: SourceLocalizeRequest):
+    source = body.source.model_dump(exclude_none=True)
+    return localize_source(source, body.target_language)
 
 
 @router.post("/api/analytics")
@@ -780,6 +845,214 @@ def _require_admin(token: str | None) -> None:
             status_code=401,
             detail="Invalid admin token",
         )
+
+
+@router.get("/api/admin/quality-cases")
+def list_quality_cases(
+    status: str | None = None,
+    language: str | None = None,
+    rating: int | None = None,
+    failure_category: str | None = None,
+    limit: int = 100,
+    x_admin_token: str | None = Header(default=None),
+):
+    _require_admin(x_admin_token)
+    limit = max(1, min(limit, 500))
+
+    clauses = []
+    params: list[Any] = []
+    if status:
+        clauses.append("review_status=%s")
+        params.append(status)
+    if language:
+        clauses.append("response_language=%s")
+        params.append(language)
+    if rating in (-1, 1):
+        clauses.append("feedback_rating=%s")
+        params.append(rating)
+    if failure_category:
+        clauses.append("failure_category=%s")
+        params.append(failure_category)
+
+    where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+    params.append(limit)
+
+    with connection() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT
+                id,request_id,question,standalone_query,response_language,
+                evidence_level,evidence_reason,answer_status,feedback_rating,
+                feedback_reason,feedback_comment,voice_transcript,
+                review_status,failure_category,review_notes,
+                created_at,updated_at
+            FROM quality_cases
+            {where}
+            ORDER BY
+                CASE WHEN review_status='needs_review' THEN 0 ELSE 1 END,
+                created_at DESC
+            LIMIT %s
+            """,
+            tuple(params),
+        ).fetchall()
+    return rows
+
+
+@router.get("/api/admin/quality-cases/{case_id}")
+def get_quality_case(
+    case_id: uuid.UUID,
+    x_admin_token: str | None = Header(default=None),
+):
+    _require_admin(x_admin_token)
+    with connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM quality_cases WHERE id=%s",
+            (case_id,),
+        ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Quality case not found")
+    return row
+
+
+@router.patch("/api/admin/quality-cases/{case_id}")
+def review_quality_case(
+    case_id: uuid.UUID,
+    body: QualityCasePatch,
+    x_admin_token: str | None = Header(default=None),
+):
+    _require_admin(x_admin_token)
+    fields = body.model_dump(exclude_none=True)
+    if not fields:
+        raise HTTPException(status_code=422, detail="No changes supplied")
+
+    allowed = {"review_status", "failure_category", "review_notes", "expected_sources"}
+    fields = {k: v for k, v in fields.items() if k in allowed}
+    columns = []
+    values: list[Any] = []
+    for key, value in fields.items():
+        columns.append(f"{key}=%s")
+        values.append(Jsonb(value) if key == "expected_sources" else value)
+    columns.append("updated_at=NOW()")
+    values.append(case_id)
+
+    with connection() as conn:
+        row = conn.execute(
+            f"UPDATE quality_cases SET {', '.join(columns)} WHERE id=%s RETURNING *",
+            tuple(values),
+        ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Quality case not found")
+    return row
+
+
+@router.post("/api/admin/quality-cases/{case_id}/golden")
+def add_quality_case_to_golden(
+    case_id: uuid.UUID,
+    body: GoldenCaseCreate,
+    x_admin_token: str | None = Header(default=None),
+):
+    _require_admin(x_admin_token)
+    gid = uuid.uuid4()
+
+    with connection() as conn:
+        case = conn.execute(
+            "SELECT * FROM quality_cases WHERE id=%s",
+            (case_id,),
+        ).fetchone()
+        if not case:
+            raise HTTPException(status_code=404, detail="Quality case not found")
+
+        conn.execute(
+            """
+            INSERT INTO golden_cases(
+                id,quality_case_id,question,language,expected_topic,
+                expected_sources,acceptable_answer,unacceptable_behavior,notes
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            """,
+            (
+                gid, case_id, case["question"], case.get("response_language"),
+                body.expected_topic,
+                Jsonb(body.expected_sources or case.get("expected_sources") or []),
+                Jsonb(body.acceptable_answer),
+                Jsonb(body.unacceptable_behavior),
+                body.notes,
+            ),
+        )
+        conn.execute(
+            """
+            UPDATE quality_cases
+            SET review_status='reviewed', updated_at=NOW()
+            WHERE id=%s
+            """,
+            (case_id,),
+        )
+
+    return {"ok": True, "id": str(gid)}
+
+
+@router.get("/api/admin/golden-cases")
+def list_golden_cases(
+    limit: int = 250,
+    x_admin_token: str | None = Header(default=None),
+):
+    _require_admin(x_admin_token)
+    limit = max(1, min(limit, 1000))
+    with connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT *
+            FROM golden_cases
+            WHERE active=TRUE
+            ORDER BY created_at DESC
+            LIMIT %s
+            """,
+            (limit,),
+        ).fetchall()
+    return rows
+
+
+@router.get("/api/admin/mastery-dashboard")
+def mastery_dashboard(x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    with connection() as conn:
+        scalar = lambda sql, params=(): conn.execute(sql, params).fetchone()["value"]
+        result = {
+            "versions": version_snapshot(),
+            "quality_cases": scalar("SELECT COUNT(*) AS value FROM quality_cases"),
+            "needs_review": scalar(
+                "SELECT COUNT(*) AS value FROM quality_cases WHERE review_status='needs_review'"
+            ),
+            "resolved": scalar(
+                "SELECT COUNT(*) AS value FROM quality_cases WHERE review_status='resolved'"
+            ),
+            "golden_cases": scalar(
+                "SELECT COUNT(*) AS value FROM golden_cases WHERE active=TRUE"
+            ),
+            "helpful": scalar(
+                "SELECT COUNT(*) AS value FROM quality_cases WHERE feedback_rating=1"
+            ),
+            "not_helpful": scalar(
+                "SELECT COUNT(*) AS value FROM quality_cases WHERE feedback_rating=-1"
+            ),
+        }
+        result["failure_taxonomy"] = conn.execute(
+            """
+            SELECT COALESCE(failure_category,'unclassified') AS category, COUNT(*) AS count
+            FROM quality_cases
+            WHERE feedback_rating=-1 OR review_status IN ('needs_review','reviewed','resolved')
+            GROUP BY COALESCE(failure_category,'unclassified')
+            ORDER BY count DESC
+            """
+        ).fetchall()
+        result["language_usage"] = conn.execute(
+            """
+            SELECT COALESCE(response_language,'unknown') AS language, COUNT(*) AS count
+            FROM quality_cases
+            GROUP BY COALESCE(response_language,'unknown')
+            ORDER BY count DESC
+            """
+        ).fetchall()
+    return result
 
 
 @router.get("/api/admin/v1-analytics")
