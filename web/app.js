@@ -74,6 +74,8 @@
     logoutBtn: $("logoutBtn"),
     feedbackModal: $("feedbackModal"),
     feedbackComment: $("feedbackComment"),
+    feedbackVoiceBtn: $("feedbackVoiceBtn"),
+    feedbackVoiceStatus: $("feedbackVoiceStatus"),
     submitFeedback: $("submitFeedback"),
 
     conversationModal: $("conversationModal"),
@@ -117,6 +119,9 @@
     selectedJapName: localStorage.getItem("bm_jap_name") || "राधा",
     japCount: 0,
     searchTimers: [],
+    sourceLocalizationCache: new Map(),
+    voiceTranscript: "",
+    voiceRecognition: null,
   };
   localStorage.setItem("bm_guest_id", state.guestId);
 
@@ -295,6 +300,11 @@
         body: { preferred_language: state.language },
       }).catch(() => {});
     }
+
+    // Existing source cards are presentation-layer objects. Changing the
+    // language should update their displayed caption and YouTube caption
+    // preference immediately without rerunning retrieval.
+    queueMicrotask(() => refreshSourceLanguages());
   }
 
   function autoSize() {
@@ -818,6 +828,7 @@
       interpretation_status: row.interpretation_status || row.data?.interpretation_status || "",
       response_language: row.response_language || row.data?.response_language || "",
       request_id: row.request_id || row.data?.request_id || "",
+      quality_case_id: row.quality_case_id || row.data?.quality_case_id || "",
       elapsed_ms: row.elapsed_ms || row.data?.elapsed_ms || null,
       quotes: row.quotes || row.data?.quotes || [],
       claims: row.claims || row.data?.claims || [],
@@ -909,18 +920,46 @@
     return sections;
   }
 
-  function sourceUrl(source) {
-    const direct = source.answer_url || source.url || "";
-    try {
-      const url = new URL(direct);
-      if (["youtube.com", "www.youtube.com", "youtu.be"].includes(url.hostname)) return url.href;
-    } catch {}
+  function sourceTargetLanguage(message) {
+    if (["hi", "hinglish", "en"].includes(state.language)) return state.language;
+    if (["hi", "hinglish", "en"].includes(message?.response_language)) return message.response_language;
+    return resolvedUiLanguage();
+  }
 
-    if (source.video_id) {
-      const seconds = Math.floor(Number(source.answer_start_ms ?? source.timestamp_start_ms ?? source.start_ms ?? 0) / 1000);
-      return `https://www.youtube.com/watch?v=${encodeURIComponent(source.video_id)}&t=${Math.max(seconds, 0)}s`;
+  function sourceUrl(source, targetLanguage = "hi") {
+    const direct = source.answer_url || source.url || "";
+    let url = null;
+
+    try {
+      url = new URL(direct);
+      if (url.hostname === "youtu.be") {
+        const vid = url.pathname.replace(/^\//, "") || source.video_id || "";
+        url = new URL(`https://www.youtube.com/watch?v=${encodeURIComponent(vid)}`);
+      }
+      if (!["youtube.com", "www.youtube.com", "m.youtube.com"].includes(url.hostname)) {
+        return "";
+      }
+    } catch {
+      if (!source.video_id) return "";
+      url = new URL(`https://www.youtube.com/watch?v=${encodeURIComponent(source.video_id)}`);
     }
-    return "";
+
+    if (source.video_id) url.searchParams.set("v", source.video_id);
+
+    const seconds = Math.floor(Number(
+      source.answer_start_ms ?? source.timestamp_start_ms ?? source.start_ms ?? 0
+    ) / 1000);
+    if (seconds > 0) url.searchParams.set("t", `${seconds}s`);
+
+    // English questions open the same canonical source with English captions
+    // preferred. Hindi and Hinglish prefer Hindi captions. We never pretend
+    // this changes Maharaj Ji's original audio.
+    const captionLanguage = targetLanguage === "en" ? "en" : "hi";
+    url.searchParams.set("hl", captionLanguage);
+    url.searchParams.set("cc_lang_pref", captionLanguage);
+    url.searchParams.set("cc_load_policy", "1");
+
+    return url.href;
   }
 
   function sourceStart(source) {
@@ -947,24 +986,87 @@
       : `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   }
 
-  function renderSource(source, index) {
-    const href = sourceUrl(source);
+  function sourceLocalizationKey(source, targetLanguage) {
+    return [
+      source.video_id || "",
+      source.answer_start_ms ?? source.timestamp_start_ms ?? source.start_ms ?? 0,
+      targetLanguage,
+      source.transcript_excerpt || source.text || "",
+    ].join("|");
+  }
+
+  async function localizedSource(source, targetLanguage) {
+    const exactExcerpt = source.transcript_excerpt || source.text || "";
+    const exactTitle = source.video_title || source.title || "Bhajan Marg satsang";
+
+    if (targetLanguage === "hi") {
+      return {
+        target_language: "hi",
+        display_title: exactTitle,
+        display_excerpt: exactExcerpt,
+        display_url: sourceUrl(source, "hi"),
+        display_label: "मूल हिन्दी स्रोत",
+        is_translation: false,
+        exact_transcript_excerpt: exactExcerpt,
+      };
+    }
+
+    const key = sourceLocalizationKey(source, targetLanguage);
+    if (state.sourceLocalizationCache.has(key)) {
+      return state.sourceLocalizationCache.get(key);
+    }
+
+    const promise = api("/api/source-localize", {
+      method: "POST",
+      body: {
+        target_language: targetLanguage,
+        source,
+      },
+    }).catch((error) => {
+      console.warn("source localization failed", error);
+      return {
+        target_language: targetLanguage,
+        display_title: exactTitle,
+        display_excerpt: exactExcerpt,
+        display_url: sourceUrl(source, targetLanguage),
+        display_label: targetLanguage === "en"
+          ? "Original caption · English rendering unavailable"
+          : "Original caption · Hinglish rendering unavailable",
+        is_translation: false,
+        exact_transcript_excerpt: exactExcerpt,
+      };
+    });
+
+    state.sourceLocalizationCache.set(key, promise);
+    return promise;
+  }
+
+  function applySourceCard(card, source, localized, targetLanguage) {
     const start = sourceStart(source) || "Source";
     const end = sourceEnd(source);
-    const excerpt = source.transcript_excerpt || source.text || "";
-    const title = source.video_title || source.title || "Bhajan Marg satsang";
+    const range = end && end !== start ? `${start} – ${end}` : start;
     const relevance = typeof source.relevance === "number"
       ? `${Math.round(source.relevance * 100)}% match`
       : "";
-    const range = end && end !== start ? `${start} – ${end}` : start;
 
-    const card = document.createElement(href ? "a" : "div");
-    card.className = "source-card";
-    if (href) {
+    const href = localized?.display_url || sourceUrl(source, targetLanguage);
+    const title = localized?.display_title || source.video_title || source.title || "Bhajan Marg satsang";
+    const excerpt = localized?.display_excerpt || source.transcript_excerpt || source.text || "";
+    const exact = localized?.exact_transcript_excerpt || source.transcript_excerpt || source.text || "";
+    const translated = Boolean(localized?.is_translation);
+
+    if (card.tagName === "A" && href) {
       card.href = href;
       card.target = "_blank";
       card.rel = "noopener noreferrer";
     }
+
+    const cta = targetLanguage === "en"
+      ? `Open video with English captions from ${start} →`
+      : targetLanguage === "hinglish"
+        ? `Hindi video · ${start} se dekhein →`
+        : `${start} से हिन्दी स्रोत देखें →`;
+
     card.innerHTML = `
       <div class="source-top">
         <span class="source-time">▶ ${esc(range)}</span>
@@ -972,9 +1074,53 @@
       </div>
       <div class="source-title">${esc(title)}</div>
       ${excerpt ? `<div class="source-excerpt">“${esc(excerpt)}”</div>` : ""}
-      <div class="source-cta">${href ? `Watch from ${esc(start)} →` : "Source timestamp unavailable"}</div>
+      ${localized?.display_label ? `<div class="source-localization-label">${esc(localized.display_label)}</div>` : ""}
+      ${translated && exact ? `
+        <div class="source-original">
+          <div class="source-original-label">Original Hindi transcript</div>
+          <div class="source-original-text">“${esc(exact)}”</div>
+        </div>
+      ` : ""}
+      <div class="source-cta">${href ? esc(cta) : "Source timestamp unavailable"}</div>
     `;
+  }
+
+  async function localizeSourceCard(card, source, message) {
+    const targetLanguage = sourceTargetLanguage(message);
+    card.dataset.sourceLanguage = targetLanguage;
+
+    // Change the link immediately; text localization may take a moment.
+    const immediate = {
+      display_url: sourceUrl(source, targetLanguage),
+      display_title: source.video_title || source.title || "Bhajan Marg satsang",
+      display_excerpt: source.transcript_excerpt || source.text || "",
+      display_label: targetLanguage === "hi" ? "मूल हिन्दी स्रोत" : "Localizing source caption…",
+      is_translation: false,
+      exact_transcript_excerpt: source.transcript_excerpt || source.text || "",
+    };
+    applySourceCard(card, source, immediate, targetLanguage);
+
+    const localized = await localizedSource(source, targetLanguage);
+    if (card.dataset.sourceLanguage !== targetLanguage) return;
+    applySourceCard(card, source, localized, targetLanguage);
+  }
+
+  function renderSource(source, index, message) {
+    const card = document.createElement("a");
+    card.className = "source-card";
+    card.dataset.sourceIndex = String(index);
+    card.__source = source;
+    card.__message = message;
+    localizeSourceCard(card, source, message);
     return card;
+  }
+
+  function refreshSourceLanguages() {
+    document.querySelectorAll(".source-card").forEach((card) => {
+      if (card.__source && card.__message) {
+        localizeSourceCard(card, card.__source, card.__message);
+      }
+    });
   }
 
   function renderMessage(message, index) {
@@ -1035,7 +1181,7 @@
         title.innerHTML = `<span>Original satsang sources</span><span>${message.sources.length} source${message.sources.length > 1 ? "s" : ""}</span>`;
         const grid = document.createElement("div");
         grid.className = "source-grid";
-        message.sources.forEach((source, sourceIndex) => grid.appendChild(renderSource(source, sourceIndex)));
+        message.sources.forEach((source, sourceIndex) => grid.appendChild(renderSource(source, sourceIndex, message)));
         sources.append(title, grid);
         bubble.appendChild(sources);
       }
@@ -1100,6 +1246,7 @@
       interpretation_status: data.interpretation_status || "",
       response_language: data.response_language || "",
       request_id: data.request_id || "",
+      quality_case_id: data.quality_case_id || "",
       elapsed_ms: data.elapsed_ms || null,
       quotes: data.quotes || [],
       claims: data.claims || [],
@@ -1299,16 +1446,20 @@
       return;
     }
 
-    const ok = await sendFeedback(payload);
-    if (ok) {
-      markFeedbackButtons(index, rating);
+    const result = await sendFeedback(payload);
+    markFeedbackButtons(index, rating);
+    if (result.persisted) {
       showToast("Thanks — feedback saved");
+    } else {
+      showToast("Feedback saved on this device; it will retry automatically");
     }
   }
 
   function openNegativeFeedback(index) {
     state.feedbackTarget = index;
     els.feedbackComment.value = "";
+    state.voiceTranscript = "";
+    if (els.feedbackVoiceStatus) els.feedbackVoiceStatus.textContent = "";
     document.querySelectorAll('input[name="feedbackReason"]').forEach((x) => { x.checked = false; });
     openModal(els.feedbackModal);
   }
@@ -1324,44 +1475,88 @@
     return {
       user_id: state.user?.id || null,
       guest_id: state.user ? null : state.guestId,
+      client_feedback_id: crypto.randomUUID(),
       conversation_id: uuidOrNull(state.activeConversationId),
       message_id: state.user ? uuidOrNull(assistant.id) : null,
+      request_id: assistant.request_id || null,
       question: question || "",
       answer: assistant.content || "",
       retrieved_sources: assistant.sources || [],
       rating,
       reason,
       comment,
+      voice_transcript: state.voiceTranscript || null,
+      client_metadata: {
+        response_language: assistant.response_language || "",
+        evidence_level: assistant.evidence_level || "",
+        answer_status: assistant.answer_status || "",
+        quality_case_id: assistant.quality_case_id || null,
+        browser_language: navigator.language || "",
+      },
     };
   }
 
-  async function sendFeedback(payload) {
+  function queueFeedback(payload) {
+    const local = JSON.parse(localStorage.getItem("bm_local_feedback") || "[]");
+    const queued = {
+      ...payload,
+      queue_id: payload.queue_id || crypto.randomUUID(),
+      created_at: payload.created_at || new Date().toISOString(),
+    };
+    local.push(queued);
+    localStorage.setItem("bm_local_feedback", JSON.stringify(local.slice(-500)));
+    return queued;
+  }
+
+  async function sendFeedback(payload, { queueOnFailure = true } = {}) {
     try {
-      await api("/api/feedback", {
+      const result = await api("/api/feedback", {
         method: "POST",
         body: {
-          guest_id: state.user ? null : state.guestId,
+          guest_id: state.user ? null : (payload.guest_id || state.guestId),
+          client_feedback_id: payload.client_feedback_id || null,
           conversation_id: uuidOrNull(payload.conversation_id),
           message_id: uuidOrNull(payload.message_id),
+          request_id: payload.request_id || null,
           question: payload.question || "",
           answer: payload.answer || "",
           retrieved_sources: payload.retrieved_sources || [],
           rating: payload.rating,
           reason: payload.reason || null,
           comment: payload.comment || null,
+          voice_transcript: payload.voice_transcript || null,
+          client_metadata: payload.client_metadata || {},
         },
       });
-      track("feedback_submitted", { rating: payload.rating, reason: payload.reason || "" });
-      return true;
+      track("feedback_submitted", {
+        rating: payload.rating,
+        reason: payload.reason || "",
+        feedback_id: result?.id || null,
+      });
+      return { persisted: true, id: result?.id || null };
     } catch (error) {
       console.warn(error);
-      // Keep a local copy so tester feedback is not lost during a backend outage.
-      const local = JSON.parse(localStorage.getItem("bm_local_feedback") || "[]");
-      local.push({ ...payload, created_at: new Date().toISOString() });
-      localStorage.setItem("bm_local_feedback", JSON.stringify(local.slice(-200)));
-      showToast("Feedback saved on this device; cloud sync failed");
-      return true;
+      if (queueOnFailure) queueFeedback(payload);
+      return { persisted: false, error };
     }
+  }
+
+  async function flushFeedbackQueue() {
+    let queue = [];
+    try {
+      queue = JSON.parse(localStorage.getItem("bm_local_feedback") || "[]");
+    } catch {
+      queue = [];
+    }
+    if (!Array.isArray(queue) || !queue.length) return;
+
+    const remaining = [];
+    for (const payload of queue) {
+      const result = await sendFeedback(payload, { queueOnFailure: false });
+      if (!result.persisted) remaining.push(payload);
+    }
+    localStorage.setItem("bm_local_feedback", JSON.stringify(remaining.slice(-500)));
+    if (!remaining.length) showToast("Saved feedback synced");
   }
 
   async function submitDetailedFeedback() {
@@ -1379,12 +1574,72 @@
       els.feedbackComment.value.trim() || null
     );
 
-    const ok = await sendFeedback(payload);
-    if (ok) {
-      closeModal(els.feedbackModal);
-      markFeedbackButtons(index, -1);
-      showToast("Thanks — this will help improve retrieval and answers");
+    const result = await sendFeedback(payload);
+    closeModal(els.feedbackModal);
+    markFeedbackButtons(index, -1);
+    if (result.persisted) {
+      showToast("Thanks — feedback saved for review");
+    } else {
+      showToast("Feedback saved on this device; it will retry automatically");
     }
+  }
+
+  function startVoiceFeedback() {
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Recognition) {
+      showToast("Voice feedback is not supported in this browser");
+      return;
+    }
+
+    if (state.voiceRecognition) {
+      try { state.voiceRecognition.stop(); } catch {}
+      return;
+    }
+
+    const recognition = new Recognition();
+    recognition.lang = sourceTargetLanguage(state.messages[state.feedbackTarget]) === "hi"
+      ? "hi-IN"
+      : sourceTargetLanguage(state.messages[state.feedbackTarget]) === "en"
+        ? "en-IN"
+        : "hi-IN";
+    recognition.interimResults = true;
+    recognition.continuous = false;
+
+    let finalText = state.voiceTranscript || "";
+    state.voiceRecognition = recognition;
+    if (els.feedbackVoiceStatus) els.feedbackVoiceStatus.textContent = "Listening…";
+    if (els.feedbackVoiceBtn) els.feedbackVoiceBtn.textContent = "■ Stop";
+
+    recognition.onresult = (event) => {
+      let interim = "";
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        const text = event.results[i][0]?.transcript || "";
+        if (event.results[i].isFinal) finalText = (finalText + " " + text).trim();
+        else interim += text;
+      }
+      state.voiceTranscript = finalText;
+      if (els.feedbackVoiceStatus) {
+        els.feedbackVoiceStatus.textContent = (finalText || interim)
+          ? `Voice: ${finalText || interim}`
+          : "Listening…";
+      }
+    };
+
+    recognition.onerror = (event) => {
+      if (els.feedbackVoiceStatus) {
+        els.feedbackVoiceStatus.textContent = `Voice error: ${event.error || "unknown"}`;
+      }
+    };
+
+    recognition.onend = () => {
+      state.voiceRecognition = null;
+      if (els.feedbackVoiceBtn) els.feedbackVoiceBtn.textContent = "🎙 Explain by voice";
+      if (els.feedbackVoiceStatus && state.voiceTranscript) {
+        els.feedbackVoiceStatus.textContent = "Voice feedback captured";
+      }
+    };
+
+    recognition.start();
   }
 
   function markFeedbackButtons(index, rating) {
@@ -1550,6 +1805,8 @@
     els.logoutBtn.addEventListener("click", logout);
     els.saveNewPassword.addEventListener("click", updatePassword);
     els.submitFeedback.addEventListener("click", submitDetailedFeedback);
+    els.feedbackVoiceBtn?.addEventListener("click", startVoiceFeedback);
+    window.addEventListener("online", () => flushFeedbackQueue());
 
     els.saveConversationTitle.addEventListener("click", saveConversationRename);
     els.deleteConversationButton.addEventListener("click", handleConversationDelete);
@@ -1623,6 +1880,7 @@
     bindEvents();
     autoSize();
     await initAuth();
+    await flushFeedbackQueue();
 
   }
 

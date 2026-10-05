@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Premanand Ji Mastery · Quality Control</title>
+  <style>
+    :root{font-family:Inter,system-ui,-apple-system,sans-serif;color:#201a17;background:#f7f4ef}
+    *{box-sizing:border-box}body{margin:0}.shell{max-width:1440px;margin:auto;padding:22px}
+    h1,h2,h3,p{margin-top:0}.top{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+    .card{background:#fff;border:1px solid #e3ddd4;border-radius:16px;padding:16px;box-shadow:0 2px 12px #0000000a}
+    .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:16px 0}
+    .metric strong{display:block;font-size:24px}.muted{color:#746d66;font-size:12px}
+    input,select,textarea,button{font:inherit}.filters{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
+    input,select,textarea{border:1px solid #d9d1c7;border-radius:10px;padding:9px;background:#fff}
+    button{border:0;border-radius:10px;padding:9px 12px;cursor:pointer;background:#7a3f21;color:#fff;font-weight:700}
+    button.secondary{background:#eee7df;color:#3c2b21}.grid{display:grid;grid-template-columns:minmax(320px,42%) 1fr;gap:14px}
+    .case-list{max-height:72vh;overflow:auto}.case{padding:12px;border-bottom:1px solid #eee6dd;cursor:pointer}
+    .case:hover,.case.active{background:#faf4ed}.case .q{font-weight:750;margin-bottom:5px}.pill{display:inline-block;border-radius:999px;padding:3px 7px;font-size:10px;background:#eee7df;margin-right:4px}
+    .pill.bad{background:#ffe0dc;color:#8f2116}.pill.good{background:#dff2e4;color:#236033}
+    pre{white-space:pre-wrap;word-break:break-word;background:#f7f4ef;padding:10px;border-radius:10px;max-height:260px;overflow:auto;font-size:11px}
+    textarea{width:100%;min-height:90px}.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}.section{margin:16px 0}
+    .candidate{border:1px solid #eee3d8;border-radius:10px;padding:10px;margin:7px 0}.candidate strong{font-size:12px}
+    @media(max-width:900px){.grid{grid-template-columns:1fr}.case-list{max-height:42vh}}
+  </style>
+</head>
+<body>
+<div class="shell">
+  <div class="top">
+    <div><h1>Premanand Ji Mastery</h1><div class="muted">User-testing control room · retrieval, answer, citation and feedback review</div></div>
+    <div><input id="token" type="password" placeholder="Admin token"><button id="connect">Connect</button></div>
+  </div>
+
+  <div id="metrics" class="metrics"></div>
+
+  <div class="filters card">
+    <select id="status"><option value="">All statuses</option><option>needs_review</option><option>unreviewed</option><option>reviewed</option><option>resolved</option></select>
+    <select id="rating"><option value="">Any feedback</option><option value="-1">👎 Not helpful</option><option value="1">👍 Helpful</option></select>
+    <select id="language"><option value="">All languages</option><option value="hi">Hindi</option><option value="hinglish">Hinglish</option><option value="en">English</option></select>
+    <select id="failure"><option value="">All failure types</option><option>corpus</option><option>transcript</option><option>chunking</option><option>query_understanding</option><option>retrieval</option><option>reranking</option><option>generation</option><option>citation</option><option>conversation_context</option><option>language</option><option>other</option></select>
+    <button id="refresh" class="secondary">Refresh</button>
+  </div>
+
+  <div class="grid">
+    <div class="card case-list" id="cases"><div class="muted">Connect to load cases.</div></div>
+    <div class="card" id="detail"><div class="muted">Select a case to review its full execution trace.</div></div>
+  </div>
+</div>
+<script src="./config.js"></script>
+<script src="./quality.js"></script>
+</body>
+</html>
