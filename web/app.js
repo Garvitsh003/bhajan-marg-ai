@@ -937,7 +937,7 @@
         url = new URL(`https://www.youtube.com/watch?v=${encodeURIComponent(vid)}`);
       }
       if (!["youtube.com", "www.youtube.com", "m.youtube.com"].includes(url.hostname)) {
-        return url.href;
+        return "";
       }
     } catch {
       if (!source.video_id) return "";
