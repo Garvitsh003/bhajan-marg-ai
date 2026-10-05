@@ -1076,10 +1076,10 @@
       ${excerpt ? `<div class="source-excerpt">“${esc(excerpt)}”</div>` : ""}
       ${localized?.display_label ? `<div class="source-localization-label">${esc(localized.display_label)}</div>` : ""}
       ${translated && exact ? `
-        <details class="source-original">
-          <summary>Original Hindi transcript</summary>
+        <div class="source-original">
+          <div class="source-original-label">Original Hindi transcript</div>
           <div class="source-original-text">“${esc(exact)}”</div>
-        </details>
+        </div>
       ` : ""}
       <div class="source-cta">${href ? esc(cta) : "Source timestamp unavailable"}</div>
     `;
