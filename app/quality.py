@@ -186,7 +186,15 @@ def attach_feedback(
     if not request_id or not database_configured():
         return
 
-    review_status = "needs_review" if rating < 0 else "unreviewed"
+    reason_category = {
+        "answer_irrelevant": "generation",
+        "wrong_source": "retrieval",
+        "didnt_understand_me": "query_understanding",
+        "incomplete": "generation",
+        "unsupported_by_source": "citation",
+        "discussed_elsewhere": "retrieval",
+        "language_problem": "language",
+    }.get(reason or "")
 
     with connection() as conn:
         conn.execute(
@@ -199,6 +207,7 @@ def attach_feedback(
                 feedback_reason=%s,
                 feedback_comment=%s,
                 voice_transcript=%s,
+                failure_category=COALESCE(failure_category,%s),
                 review_status=CASE
                     WHEN %s < 0 THEN 'needs_review'
                     ELSE review_status
@@ -214,6 +223,7 @@ def attach_feedback(
                 reason,
                 comment,
                 voice_transcript,
+                reason_category,
                 rating,
                 request_id,
             ),
