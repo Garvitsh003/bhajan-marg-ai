@@ -277,6 +277,7 @@ class MessageCreate(BaseModel):
 
 class FeedbackRequest(BaseModel):
     guest_id: str | None = Field(default=None, max_length=128)
+    client_feedback_id: uuid.UUID | None = None
     conversation_id: uuid.UUID | None = None
     message_id: uuid.UUID | None = None
     request_id: str | None = Field(default=None, max_length=128)
@@ -772,15 +773,23 @@ def save_feedback(body: FeedbackRequest, request: Request):
     guest_id = body.guest_id if not user else None
 
     with connection() as conn:
+        if body.client_feedback_id:
+            existing = conn.execute(
+                "SELECT id FROM feedback WHERE client_feedback_id=%s",
+                (body.client_feedback_id,),
+            ).fetchone()
+            if existing:
+                return {"ok": True, "id": str(existing["id"]), "persisted": True, "duplicate": True}
+
         conn.execute(
             """
             INSERT INTO feedback(
-                id,user_id,guest_id,conversation_id,message_id,request_id,question,answer,
+                id,user_id,guest_id,client_feedback_id,conversation_id,message_id,request_id,question,answer,
                 retrieved_sources,rating,reason,comment,voice_transcript,client_metadata
-            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             """,
             (
-                fid, user["id"] if user else None, guest_id,
+                fid, user["id"] if user else None, guest_id, body.client_feedback_id,
                 body.conversation_id, body.message_id, body.request_id, body.question, body.answer,
                 Jsonb(body.retrieved_sources), body.rating, body.reason, body.comment,
                 body.voice_transcript, Jsonb(body.client_metadata),
