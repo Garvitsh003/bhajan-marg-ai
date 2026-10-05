@@ -32,7 +32,17 @@
       authTitle: "साइन इन", google: "G  Google से जारी रखें", create: "अकाउंट बनाएँ",
       forgot: "पासवर्ड भूल गए?", guestContinue: "अतिथि के रूप में जारी रखें",
       profile: "प्रोफ़ाइल और पसंद", save: "सेव करें", logout: "लॉग आउट",
-      feedbackTitle: "क्या गलत था?", sendFeedback: "फीडबैक भेजें",
+      feedbackTitle: "क्या गलत था?", sendFeedback: "फीडबैक भेजें", voiceFeedback: "🎙 आवाज़ से बताएं",
+      feedbackReasons: {
+        answer_irrelevant: "उत्तर प्रासंगिक नहीं था",
+        wrong_source: "गलत स्रोत",
+        didnt_understand_me: "मेरी बात नहीं समझी",
+        incomplete: "उत्तर अधूरा था",
+        unsupported_by_source: "स्रोत उत्तर का समर्थन नहीं करता",
+        discussed_elsewhere: "मुझे पता है महाराज जी ने यह कहीं और बताया है",
+        language_problem: "भाषा की समस्या",
+        other: "अन्य"
+      },
       resetTitle: "नया पासवर्ड सेट करें", updatePassword: "पासवर्ड अपडेट करें",
       suggestions: ["बार-बार क्रोध आए तो क्या करें?","भगवान पर विश्वास कैसे बढ़ाएं?","मन शांत कैसे करें?","नाम जप में मन भटके तो क्या करें?"]
     },
@@ -52,7 +62,17 @@
       authTitle: "Sign in", google: "G  Google se continue karein", create: "Account banayein",
       forgot: "Password bhool gaye?", guestContinue: "Guest ke roop mein continue karein",
       profile: "Profile & preferences", save: "Save", logout: "Log out",
-      feedbackTitle: "Kya galat tha?", sendFeedback: "Feedback bhejein",
+      feedbackTitle: "Kya galat tha?", sendFeedback: "Feedback bhejein", voiceFeedback: "🎙 Voice se batayein",
+      feedbackReasons: {
+        answer_irrelevant: "Answer relevant nahi tha",
+        wrong_source: "Galat source",
+        didnt_understand_me: "Meri baat samajh nahi aayi",
+        incomplete: "Answer incomplete tha",
+        unsupported_by_source: "Source answer ko support nahi karta",
+        discussed_elsewhere: "Mujhe pata hai Maharaj Ji ne ispar kahin aur bataya hai",
+        language_problem: "Language problem",
+        other: "Other"
+      },
       resetTitle: "Naya password set karein", updatePassword: "Password update karein",
       suggestions: ["Bar-bar gussa aaye to kya karein?","Bhagwan par vishwas kaise badhayein?","Mann shaant kaise karein?","Naam-jap ke time mann bhatke to kya karein?"]
     },
@@ -72,7 +92,17 @@
       authTitle: "Sign in", google: "G  Continue with Google", create: "Create account",
       forgot: "Forgot password?", guestContinue: "Continue as guest",
       profile: "Profile & preferences", save: "Save", logout: "Log out",
-      feedbackTitle: "What was wrong?", sendFeedback: "Send feedback",
+      feedbackTitle: "What was wrong?", sendFeedback: "Send feedback", voiceFeedback: "🎙 Explain by voice",
+      feedbackReasons: {
+        answer_irrelevant: "Answer irrelevant",
+        wrong_source: "Wrong source",
+        didnt_understand_me: "Didn't understand me",
+        incomplete: "Incomplete",
+        unsupported_by_source: "Source didn't support answer",
+        discussed_elsewhere: "I know Maharaj Ji discussed this elsewhere",
+        language_problem: "Language problem",
+        other: "Other"
+      },
       resetTitle: "Set a new password", updatePassword: "Update password",
       suggestions: ["What should I do when anger keeps returning?","How can I increase my faith in God?","How can I calm my mind?","How should I do naam-jap when my mind wanders?"]
     }
@@ -283,6 +313,16 @@
       setText("#logoutBtn", c.logout);
       setText("#feedbackModal h2", c.feedbackTitle);
       setText("#submitFeedback", c.sendFeedback);
+      setText("#feedbackVoiceBtn", c.voiceFeedback);
+
+      document.querySelectorAll("#feedbackReasons .reason-option").forEach((label) => {
+        const input = label.querySelector('input[name="feedbackReason"]');
+        const text = input ? c.feedbackReasons?.[input.value] : null;
+        if (!text || !input) return;
+        label.childNodes.forEach((node) => {
+          if (node.nodeType === Node.TEXT_NODE) node.textContent = " " + text;
+        });
+      });
       setText("#resetModal h2", c.resetTitle);
       setText("#saveNewPassword", c.updatePassword);
 
