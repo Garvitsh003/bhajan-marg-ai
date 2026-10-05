@@ -14,7 +14,7 @@ import httpx
 import jwt
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
-from fastapi import APIRouter, Header, HTTPException, Request, Response
+from fastapi import APIRouter, File, Form, Header, HTTPException, Request, Response, UploadFile
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from psycopg.types.json import Jsonb
@@ -24,6 +24,7 @@ from .product_db import configured as database_configured
 from .product_db import connection
 from .quality import attach_feedback, attach_message, version_snapshot
 from .source_localization import localize_source
+from .cloud_llm import gemini_transcribe_audio
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -764,6 +765,33 @@ def create_message(conversation_id: uuid.UUID, body: MessageCreate, request: Req
             log.exception("Failed linking assistant message to quality case")
 
     return row
+
+
+@router.post("/api/feedback/voice-transcribe")
+async def transcribe_feedback_voice(
+    audio: UploadFile = File(...),
+    language: str = Form(default="auto"),
+):
+    allowed = {"auto", "hi", "hinglish", "en"}
+    lang = language if language in allowed else "auto"
+
+    raw = await audio.read()
+    if not raw:
+        raise HTTPException(status_code=422, detail="Voice feedback audio is empty")
+    if len(raw) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Voice feedback audio is too large")
+
+    try:
+        transcript = gemini_transcribe_audio(
+            raw,
+            mime_type=audio.content_type or "audio/webm",
+            language=lang,
+        )
+    except Exception as exc:
+        log.exception("Voice feedback transcription failed")
+        raise HTTPException(status_code=503, detail="Voice transcription unavailable") from exc
+
+    return {"ok": True, "transcript": transcript, "language": lang}
 
 
 @router.post("/api/feedback")

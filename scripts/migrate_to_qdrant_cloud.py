@@ -66,10 +66,10 @@ def main():
         "bhajan_marg_chunks",
     )
 
-    cloud_url = require_env("QDRANT_URL")
-    cloud_key = require_env("QDRANT_API_KEY")
+    cloud_url = require_env("CLOUD_QDRANT_URL")
+    cloud_key = require_env("CLOUD_QDRANT_API_KEY")
     cloud_collection = os.getenv(
-        "QDRANT_COLLECTION",
+        "CLOUD_QDRANT_COLLECTION",
         "bhajan_marg_chunks_cloud_v1",
     )
 

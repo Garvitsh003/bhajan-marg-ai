@@ -49,6 +49,7 @@ def init_db():
                 channel TEXT,
                 published_at TEXT,
                 duration_seconds INTEGER,
+                content_type TEXT NOT NULL DEFAULT 'video',
                 status TEXT NOT NULL DEFAULT 'discovered',
                 transcript_source TEXT,
                 transcript_hash TEXT,
@@ -105,6 +106,23 @@ def init_db():
             """
         )
 
+        # Non-destructive schema migration for existing installations.
+        columns = {
+            row["name"]
+            for row in conn.execute(
+                "PRAGMA table_info(videos)"
+            ).fetchall()
+        }
+
+        if "content_type" not in columns:
+            conn.execute(
+                """
+                ALTER TABLE videos
+                ADD COLUMN content_type TEXT
+                NOT NULL DEFAULT 'video'
+                """
+            )
+
 
 def upsert_video(video: dict[str, Any]):
     now = utcnow()
@@ -113,21 +131,25 @@ def upsert_video(video: dict[str, Any]):
             """
             INSERT INTO videos(
                 video_id,title,url,channel,published_at,duration_seconds,
-                status,discovered_at,updated_at
+                content_type,status,discovered_at,updated_at
             )
-            VALUES(?,?,?,?,?,?,'discovered',?,?)
+            VALUES(?,?,?,?,?,?,?,'discovered',?,?)
             ON CONFLICT(video_id) DO UPDATE SET
                 title=excluded.title,
                 url=excluded.url,
                 channel=COALESCE(excluded.channel,videos.channel),
                 published_at=COALESCE(excluded.published_at,videos.published_at),
                 duration_seconds=COALESCE(excluded.duration_seconds,videos.duration_seconds),
+                content_type=COALESCE(excluded.content_type,videos.content_type),
                 updated_at=excluded.updated_at
             """,
             (
                 video["video_id"], video["title"], video["url"],
                 video.get("channel"), video.get("published_at"),
-                video.get("duration_seconds"), now, now,
+                video.get("duration_seconds"),
+                video.get("content_type", "video"),
+                now,
+                now,
             ),
         )
 

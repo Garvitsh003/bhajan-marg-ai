@@ -60,32 +60,96 @@ def _ydl_common() -> dict[str, Any]:
     return opts
 
 
-def list_channel_videos(limit: int | None = None) -> list[dict[str, Any]]:
+def _list_channel_tab(
+    url: str,
+    content_type: str,
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
     opts = _ydl_common()
     opts.update({
         "extract_flat": "in_playlist",
         "skip_download": True,
         "playlistend": limit if limit and limit > 0 else None,
     })
+
     with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(settings.channel_url, download=False) or {}
+        info = ydl.extract_info(url, download=False) or {}
 
     entries = info.get("entries") or []
     videos = []
+
     for e in entries:
         if not e or not e.get("id"):
             continue
-        vid = e["id"]
+
+        vid = str(e["id"])
+
         videos.append({
             "video_id": vid,
             "title": e.get("title") or vid,
-            "url": e.get("url") if str(e.get("url", "")).startswith("http")
-                   else f"https://www.youtube.com/watch?v={vid}",
-            "channel": e.get("channel") or e.get("uploader") or "Bhajan Marg",
+            "url": (
+                e.get("url")
+                if str(e.get("url", "")).startswith("http")
+                else f"https://www.youtube.com/watch?v={vid}"
+            ),
+            "channel": (
+                e.get("channel")
+                or e.get("uploader")
+                or "Bhajan Marg"
+            ),
             "published_at": e.get("upload_date"),
-            "duration_seconds": int(e["duration"]) if e.get("duration") else None,
+            "duration_seconds": (
+                int(e["duration"])
+                if e.get("duration")
+                else None
+            ),
+            "content_type": content_type,
         })
+
     return videos
+
+
+def list_channel_videos(
+    limit: int | None = None,
+    content_type: str | None = None,
+) -> list[dict[str, Any]]:
+    tabs = {
+        "video": settings.channel_url,
+        "short": settings.channel_shorts_url,
+        "stream": settings.channel_streams_url,
+    }
+
+    if content_type is not None:
+        if content_type not in tabs:
+            raise ValueError(
+                "content_type must be one of: "
+                "video, short, stream"
+            )
+
+        return _list_channel_tab(
+            tabs[content_type],
+            content_type,
+            limit,
+        )
+
+    # Discover all channel surfaces.
+    #
+    # A YouTube ID is globally unique. If an item somehow appears
+    # on multiple channel tabs, it is indexed only once.
+    discovered: dict[str, dict[str, Any]] = {}
+
+    for kind, url in tabs.items():
+        for video in _list_channel_tab(
+            url,
+            kind,
+            limit,
+        ):
+            vid = video["video_id"]
+
+            if vid not in discovered:
+                discovered[vid] = video
+
+    return list(discovered.values())
 
 
 def enrich_video(video: dict[str, Any]) -> dict[str, Any]:
@@ -242,6 +306,7 @@ def save_transcript(video: dict, segments: list[dict], source: str) -> tuple[str
         "url": video["url"],
         "channel": video.get("channel"),
         "published_at": video.get("published_at"),
+        "content_type": video.get("content_type", "video"),
         "transcript_source": source,
         "segments": segments,
     }
@@ -256,10 +321,54 @@ def save_transcript(video: dict, segments: list[dict], source: str) -> tuple[str
 
 
 def get_or_create_transcript(video: dict) -> tuple[list[dict], str, str, str]:
+    # Reuse an already-generated transcript when available.
+    # This is especially important for Whisper recoveries, which are expensive.
+    existing_path = (
+        Path(settings.transcript_dir)
+        / f"{video['video_id']}.json"
+    )
+
+    if existing_path.exists():
+        try:
+            doc = json.loads(
+                existing_path.read_text(encoding="utf-8")
+            )
+
+            segments = doc.get("segments") or []
+            source = doc.get("transcript_source")
+
+            if segments and source:
+                # Refresh metadata while preserving the recovered transcript.
+                path, digest = save_transcript(
+                    video,
+                    segments,
+                    source,
+                )
+
+                return (
+                    segments,
+                    source,
+                    path,
+                    digest,
+                )
+        except Exception:
+            # Broken cache should never prevent a fresh recovery attempt.
+            pass
+
     segments, source = fetch_captions(video)
+
     if not segments:
         segments, source = whisper_transcribe(video)
+
     if not segments:
-        raise RuntimeError("No usable captions/transcript found")
-    path, digest = save_transcript(video, segments, source)
+        raise RuntimeError(
+            "No usable captions/transcript found"
+        )
+
+    path, digest = save_transcript(
+        video,
+        segments,
+        source,
+    )
+
     return segments, source, path, digest

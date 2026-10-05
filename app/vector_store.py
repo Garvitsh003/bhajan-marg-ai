@@ -96,6 +96,7 @@ def index_chunks(video: dict[str, Any], chunks: list[dict[str, Any]]) -> list[di
             "title": video["title"],
             "url": video["url"],
             "published_at": video.get("published_at"),
+            "content_type": video.get("content_type", "video"),
             "chunk_index": chunk["chunk_index"],
             "start_ms": chunk["start_ms"],
             "end_ms": chunk["end_ms"],
