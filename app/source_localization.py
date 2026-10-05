@@ -36,7 +36,7 @@ def _youtube_url(
             "www.youtube.com",
             "m.youtube.com",
         }:
-            return base
+            return ""
 
         query = dict(parse_qsl(parsed.query, keep_blank_values=True))
 
@@ -135,13 +135,13 @@ def localize_source(
         source.get("video_title")
         or source.get("title")
         or "Bhajan Marg satsang"
-    ).strip()
+    ).strip()[:500]
 
     exact_excerpt = str(
         source.get("transcript_excerpt")
         or source.get("text")
         or ""
-    ).strip()
+    ).strip()[:10000]
 
     if target == "hi":
         display_title = title
