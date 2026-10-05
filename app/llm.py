@@ -98,6 +98,86 @@ Return JSON: {{"query": "standalone retrieval query"}}'''
         return f'{previous}\n{question}'
 
 
+def expand_retrieval_queries(question: str) -> list[str]:
+    """Generate a small multilingual recall set for Hindi-first corpus search.
+
+    The Bhajan Marg corpus is overwhelmingly Hindi/Devanagari. Roman-Hindi or
+    English queries can therefore miss exact BM25 matches and can also be weak
+    under the current compact dense model. Expansion is retrieval-only: it must
+    preserve the user's meaning and may never add an answer or new condition.
+    """
+    original = _normalize_space(question)
+    if not original:
+        return []
+
+    # Hindi/Devanagari queries already align well with the corpus. Avoid an
+    # unnecessary model call in the common case.
+    devanagari = len(re.findall(r"[\u0900-\u097F]", original))
+    letters = sum(ch.isalpha() for ch in original)
+    if devanagari >= 3 and devanagari / max(letters, 1) >= 0.20:
+        return [original]
+
+    prompt = f"""User search query:
+{original}
+
+Create retrieval variants for a Hindi Bhajan Marg transcript corpus.
+
+Rules:
+1. This is SEARCH QUERY NORMALIZATION ONLY. Never answer the user.
+2. Preserve the exact intent, entities, negation, uncertainty and qualifiers.
+3. The first query must be the user's original query unchanged except whitespace.
+4. If the query is Roman Hindi/Hinglish, include:
+   - a corrected Roman-Hindi spelling variant when useful;
+   - a faithful Devanagari Hindi equivalent.
+5. If the query is English, include a faithful concise Devanagari Hindi equivalent.
+6. You may include one concise English semantic variant if useful.
+7. Do not add spiritual advice, synonyms that change meaning, or broader topics.
+8. Return at most 4 total queries including the original.
+
+Example:
+"radha ashtmi vrat"
+- "radha ashtmi vrat"
+- "radha ashtami vrat"
+- "राधा अष्टमी व्रत"
+- "Radha Ashtami fast"
+
+Return JSON only:
+{{"queries":["..."]}}
+"""
+    try:
+        raw = ollama_chat(
+            [{"role": "user", "content": prompt}],
+            temperature=0,
+            json_mode=True,
+            num_predict=260,
+        )
+        rows = parse_json(raw, {}).get("queries", [])
+        if not isinstance(rows, list):
+            raise ValueError("Invalid retrieval query expansion")
+
+        output: list[str] = [original]
+        seen = {original.casefold()}
+
+        for item in rows:
+            if not isinstance(item, str):
+                continue
+            value = _normalize_space(item)
+            if not value:
+                continue
+            key = value.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            output.append(value)
+            if len(output) >= 4:
+                break
+
+        return output
+    except Exception as exc:
+        log.warning("Retrieval query expansion unavailable (%s)", type(exc).__name__)
+        return [original]
+
+
 def judge_evidence(question: str, sources: list[dict], algorithmic_level: str) -> dict:
     if not sources:
         return {"level": "none", "source_indices": []}

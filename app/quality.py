@@ -136,7 +136,7 @@ def record_chat_case(
                 generated.get("answer_status"),
                 generated.get("extraction_status"),
                 generated.get("interpretation_status"),
-                Jsonb([standalone_query]),
+                Jsonb(evidence.get("search_queries") or [standalone_query]),
                 Jsonb(retrieval_trace),
                 Jsonb(sources_shown),
                 Jsonb(answer_trace),
