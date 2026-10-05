@@ -38,3 +38,13 @@ def test_english_source_keeps_exact_original_separate(monkeypatch):
     assert result["exact_transcript_excerpt"] == "नाम जप करते रहो।"
     assert result["is_translation"] is True
     assert "cc_lang_pref=en" in result["display_url"]
+
+
+def test_unsafe_source_url_is_not_exposed():
+    source = sample_source()
+    source["url"] = "javascript:alert(1)"
+    source["video_id"] = None
+
+    result = source_localization.localize_source(source, "hi")
+
+    assert result["display_url"] == ""
