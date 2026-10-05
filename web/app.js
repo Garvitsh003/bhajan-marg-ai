@@ -1475,6 +1475,7 @@
     return {
       user_id: state.user?.id || null,
       guest_id: state.user ? null : state.guestId,
+      client_feedback_id: crypto.randomUUID(),
       conversation_id: uuidOrNull(state.activeConversationId),
       message_id: state.user ? uuidOrNull(assistant.id) : null,
       request_id: assistant.request_id || null,
@@ -1513,6 +1514,7 @@
         method: "POST",
         body: {
           guest_id: state.user ? null : (payload.guest_id || state.guestId),
+          client_feedback_id: payload.client_feedback_id || null,
           conversation_id: uuidOrNull(payload.conversation_id),
           message_id: uuidOrNull(payload.message_id),
           request_id: payload.request_id || null,
