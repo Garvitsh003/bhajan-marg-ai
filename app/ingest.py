@@ -54,13 +54,17 @@ def run_ingestion(
     limit: int | None = None,
     force: bool = False,
     mode: str = "backfill",
+    content_type: str | None = None,
 ) -> dict:
     db.init_db()
     run_id = db.start_run(mode)
     counts = {"discovered": 0, "indexed": 0, "skipped": 0, "failed": 0}
 
     try:
-        videos = list_channel_videos(limit=limit)
+        videos = list_channel_videos(
+            limit=limit,
+            content_type=content_type,
+        )
         counts["discovered"] = len(videos)
 
         for n, video in enumerate(videos, 1):

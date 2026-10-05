@@ -6,6 +6,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     channel_url: str = "https://www.youtube.com/@BhajanMarg/videos"
+    channel_shorts_url: str = "https://www.youtube.com/@BhajanMarg/shorts"
+    channel_streams_url: str = "https://www.youtube.com/@BhajanMarg/streams"
 
     # Runtime provider selection. Local mode preserves the existing stack.
     app_mode: str = "local"
