@@ -1,24 +1,22 @@
 from __future__ import annotations
 
-
-from pathlib import Path
-from dotenv import load_dotenv
-
-_PROJECT_ROOT = Path(__file__).resolve().parents[1]
-load_dotenv(
-    dotenv_path=_PROJECT_ROOT / ".env",
-    override=False,
-)
-
 import os
 import threading
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
+from dotenv import load_dotenv
 import psycopg
 from psycopg import Connection
 from psycopg.rows import dict_row
+
+
+_PROJECT_ROOT = Path(__file__).resolve().parents[1]
+load_dotenv(
+    dotenv_path=_PROJECT_ROOT / ".env",
+    override=False,
+)
 
 _SCHEMA_LOCK = threading.Lock()
 _SCHEMA_READY = False
@@ -42,8 +40,39 @@ def _raw_connection() -> Connection:
     return psycopg.connect(url, row_factory=dict_row)
 
 
-def _schema_path() -> Path:
-    return Path(__file__).resolve().parents[1] / "migrations" / "001_v1_mvp_postgres.sql"
+def _migration_paths() -> list[Path]:
+    migration_dir = _PROJECT_ROOT / "migrations"
+    if not migration_dir.exists():
+        raise RuntimeError(f"Missing migrations directory: {migration_dir}")
+
+    paths = sorted(
+        path
+        for path in migration_dir.glob("*.sql")
+        if path.is_file()
+    )
+    if not paths:
+        raise RuntimeError(f"No SQL migrations found in: {migration_dir}")
+    return paths
+
+
+def _statements_from_sql(path: Path) -> list[str]:
+    sql = path.read_text(encoding="utf-8")
+
+    # Project migrations intentionally contain ordinary DDL only. Keeping the
+    # parser small and deterministic also lets old deployments self-upgrade on
+    # the next process start without a provider-specific migration framework.
+    buff: list[str] = []
+    for line in sql.splitlines():
+        if line.strip().startswith("--"):
+            continue
+        buff.append(line)
+
+    cleaned = "\n".join(buff)
+    return [
+        part.strip()
+        for part in cleaned.split(";")
+        if part.strip()
+    ]
 
 
 def ensure_schema() -> None:
@@ -55,31 +84,14 @@ def ensure_schema() -> None:
         if _SCHEMA_READY:
             return
 
-        path = _schema_path()
-        if not path.exists():
-            raise RuntimeError(f"Missing V1 schema migration: {path}")
-
-        sql = path.read_text(encoding="utf-8")
-        # This migration intentionally contains only ordinary DDL, so splitting
-        # on semicolons is safe and avoids driver differences around multi-query
-        # execution.
-        statements = []
-        buff: list[str] = []
-        for line in sql.splitlines():
-            stripped = line.strip()
-            if stripped.startswith("--"):
-                continue
-            buff.append(line)
-        cleaned = "\n".join(buff)
-        for part in cleaned.split(";"):
-            stmt = part.strip()
-            if stmt:
-                statements.append(stmt)
-
         with _raw_connection() as conn:
             with conn.cursor() as cur:
-                for statement in statements:
-                    cur.execute(statement)
+                # Every migration is idempotent (CREATE ... IF NOT EXISTS /
+                # ALTER ... IF NOT EXISTS), so existing installations can safely
+                # execute the full ordered set at startup.
+                for path in _migration_paths():
+                    for statement in _statements_from_sql(path):
+                        cur.execute(statement)
 
         _SCHEMA_READY = True
 
