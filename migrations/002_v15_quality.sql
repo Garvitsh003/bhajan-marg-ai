@@ -5,6 +5,9 @@ ALTER TABLE feedback
     ADD COLUMN IF NOT EXISTS request_id VARCHAR(128);
 
 ALTER TABLE feedback
+    ADD COLUMN IF NOT EXISTS client_feedback_id UUID;
+
+ALTER TABLE feedback
     ADD COLUMN IF NOT EXISTS voice_transcript TEXT;
 
 ALTER TABLE feedback
@@ -13,6 +16,10 @@ ALTER TABLE feedback
 CREATE INDEX IF NOT EXISTS idx_feedback_request_id
     ON feedback(request_id)
     WHERE request_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_feedback_client_id
+    ON feedback(client_feedback_id)
+    WHERE client_feedback_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS quality_cases (
     id UUID PRIMARY KEY,
