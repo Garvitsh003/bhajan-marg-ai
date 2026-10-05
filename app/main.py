@@ -19,6 +19,7 @@ from .language import render_answer_language
 from .budget import deadline, request_id
 from .retrieval import retrieve
 from .search_backend import ensure_collection
+from .quality import record_chat_case
 from .v1_api import router as v1_router
 
 logging.basicConfig(
@@ -216,6 +217,26 @@ def _chat(req: ChatRequest, trace_id: str, started: float):
         **{key:generated[key] for key in (
             'answer_status','extraction_status','interpretation_status','quotes','claims')},
     }
+
+    # V1.5 quality observability is intentionally non-blocking. A database
+    # outage must never turn a grounded answer into a failed chat response.
+    try:
+        case_id = record_chat_case(
+            request_id=trace_id,
+            question=question,
+            standalone_query=standalone_query,
+            response_language=response_language,
+            answer=answer,
+            evidence=evidence,
+            generated=generated,
+            sources_shown=public_sources,
+            elapsed_ms=result["elapsed_ms"],
+        )
+        if case_id:
+            result["quality_case_id"] = case_id
+    except Exception:
+        log.exception("request=%s quality_case_write_failed", trace_id)
+
     log.info('request=%s completed status=%s elapsed_ms=%d',
              trace_id, generated['answer_status'], result['elapsed_ms'])
     return JSONResponse(result, headers={'X-Request-ID':trace_id})

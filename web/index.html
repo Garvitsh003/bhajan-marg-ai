@@ -200,6 +200,12 @@
     .source-relevance{font-size:10px;color:var(--muted)}
     .source-title{font-size:12px;font-weight:800;margin-top:5px;line-height:1.45}
     .source-excerpt{font-family:Georgia,serif;font-size:12px;line-height:1.55;color:var(--muted);margin-top:7px}
+    .source-localization-label{font-size:9px;color:var(--muted);margin-top:7px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+    .source-original{margin-top:7px;font-size:10px;color:var(--muted)}
+    .source-original-label{color:var(--accent);font-weight:700;margin-bottom:4px}
+    .source-original-text{font-family:Georgia,serif;line-height:1.5;margin-top:6px}
+    .voice-feedback-row{display:flex;align-items:center;gap:8px;margin-top:10px}
+    .voice-feedback-status{font-size:11px;color:var(--muted);min-height:16px}
     .source-cta{font-size:10px;color:var(--accent);font-weight:800;margin-top:9px}
     .feedback-row{display:flex;gap:7px;margin-top:13px}
     .feedback-btn{
@@ -653,16 +659,22 @@
       <button class="icon-btn" data-close="feedbackModal" type="button">×</button>
     </div>
     <div class="reason-list" id="feedbackReasons">
-      <label class="reason-option"><input type="radio" name="feedbackReason" value="didnt_answer"> Didn't answer my question</label>
-      <label class="reason-option"><input type="radio" name="feedbackReason" value="wrong_teaching"> Wrong teaching/source</label>
-      <label class="reason-option"><input type="radio" name="feedbackReason" value="irrelevant_source"> Source wasn't relevant</label>
-      <label class="reason-option"><input type="radio" name="feedbackReason" value="hard_to_understand"> Hard to understand</label>
-      <label class="reason-option"><input type="radio" name="feedbackReason" value="language_issue"> Language issue</label>
+      <label class="reason-option"><input type="radio" name="feedbackReason" value="answer_irrelevant"> Answer irrelevant</label>
+      <label class="reason-option"><input type="radio" name="feedbackReason" value="wrong_source"> Wrong source</label>
+      <label class="reason-option"><input type="radio" name="feedbackReason" value="didnt_understand_me"> Didn't understand me</label>
+      <label class="reason-option"><input type="radio" name="feedbackReason" value="incomplete"> Incomplete</label>
+      <label class="reason-option"><input type="radio" name="feedbackReason" value="unsupported_by_source"> Source didn't support answer</label>
+      <label class="reason-option"><input type="radio" name="feedbackReason" value="discussed_elsewhere"> I know Maharaj Ji discussed this elsewhere</label>
+      <label class="reason-option"><input type="radio" name="feedbackReason" value="language_problem"> Language problem</label>
       <label class="reason-option"><input type="radio" name="feedbackReason" value="other"> Other</label>
     </div>
     <div class="field">
       <label for="feedbackComment">Tell us more (optional)</label>
       <textarea id="feedbackComment" placeholder="What should have been better?"></textarea>
+    </div>
+    <div class="voice-feedback-row">
+      <button class="secondary-btn" id="feedbackVoiceBtn" type="button">🎙 Explain by voice</button>
+      <span class="voice-feedback-status" id="feedbackVoiceStatus" aria-live="polite"></span>
     </div>
     <div class="auth-actions">
       <button class="primary-btn" id="submitFeedback" type="button">Send feedback</button>
