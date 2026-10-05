@@ -134,6 +134,8 @@
         <h2>Question</h2>
         <p>${esc(c.question)}</p>
         <div class="muted">Standalone: ${esc(c.standalone_query || "")}</div>
+        <div class="muted" style="margin-top:5px">Search variants</div>
+        <pre>${esc(JSON.stringify(c.search_queries || [], null, 2))}</pre>
         <div style="margin-top:7px">
           ${pill(c.response_language || "unknown")}
           ${pill(c.evidence_level || "none")}
