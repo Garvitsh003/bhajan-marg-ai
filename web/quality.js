@@ -160,8 +160,15 @@
       <div class="section">
         <h3>User feedback</h3>
         <p>${c.feedback_rating === -1 ? "👎" : c.feedback_rating === 1 ? "👍" : "No feedback yet"} ${esc(c.feedback_reason || "")}</p>
-        ${c.feedback_comment ? `<pre>${esc(c.feedback_comment)}</pre>` : ""}
-        ${c.voice_transcript ? `<div class="muted">Voice transcript</div><pre>${esc(c.voice_transcript)}</pre>` : ""}
+        ${c.feedback_comment
+          ? `<div class="muted">Written comment</div><pre>${esc(c.feedback_comment)}</pre>`
+          : `<div class="muted">Written comment: none</div>`
+        }
+
+        ${c.voice_transcript
+          ? `<div class="muted">Voice transcript</div><pre>${esc(c.voice_transcript)}</pre>`
+          : `<div class="muted">Voice transcript: none captured</div>`
+        }
       </div>
 
       <div class="section">

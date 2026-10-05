@@ -121,7 +121,10 @@
     searchTimers: [],
     sourceLocalizationCache: new Map(),
     voiceTranscript: "",
-    voiceRecognition: null,
+    voiceRecorder: null,
+    voiceStream: null,
+    voiceChunks: [],
+    voiceTranscriptionPromise: null,
   };
   localStorage.setItem("bm_guest_id", state.guestId);
 
@@ -1459,7 +1462,16 @@
     state.feedbackTarget = index;
     els.feedbackComment.value = "";
     state.voiceTranscript = "";
-    if (els.feedbackVoiceStatus) els.feedbackVoiceStatus.textContent = "";
+    state.voiceChunks = [];
+    state.voiceTranscriptionPromise = null;
+
+    if (els.feedbackVoiceStatus) {
+      els.feedbackVoiceStatus.textContent = "";
+    }
+
+    if (els.feedbackVoiceBtn) {
+      els.feedbackVoiceBtn.textContent = "🎙 Explain by voice";
+    }
     document.querySelectorAll('input[name="feedbackReason"]').forEach((x) => { x.checked = false; });
     openModal(els.feedbackModal);
   }
@@ -1564,7 +1576,31 @@
     const assistant = state.messages[index];
     if (!assistant) return;
 
-    const reason = document.querySelector('input[name="feedbackReason"]:checked')?.value || "other";
+    if (state.voiceRecorder?.state === "recording") {
+      showToast("Stop the voice recording before sending feedback");
+      return;
+    }
+
+    if (state.voiceTranscriptionPromise) {
+      if (els.feedbackVoiceStatus) {
+        els.feedbackVoiceStatus.textContent =
+          "Finishing voice transcription…";
+      }
+
+      try {
+        await state.voiceTranscriptionPromise;
+      } catch {
+        showToast(
+          "Voice transcription failed. Retry voice or send written feedback."
+        );
+        return;
+      }
+    }
+
+    const reason =
+      document.querySelector(
+        'input[name="feedbackReason"]:checked'
+      )?.value || "other";
     const question = assistant.question_snapshot || previousUserQuestion(index);
     const payload = feedbackPayload(
       assistant,
@@ -1584,63 +1620,267 @@
     }
   }
 
-  function startVoiceFeedback() {
-    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!Recognition) {
-      showToast("Voice feedback is not supported in this browser");
-      return;
-    }
+  function feedbackVoiceLanguage() {
+    const assistant = state.messages[state.feedbackTarget];
 
-    if (state.voiceRecognition) {
-      try { state.voiceRecognition.stop(); } catch {}
-      return;
-    }
+    const lang = sourceTargetLanguage(assistant);
 
-    const recognition = new Recognition();
-    recognition.lang = sourceTargetLanguage(state.messages[state.feedbackTarget]) === "hi"
-      ? "hi-IN"
-      : sourceTargetLanguage(state.messages[state.feedbackTarget]) === "en"
-        ? "en-IN"
-        : "hi-IN";
-    recognition.interimResults = true;
-    recognition.continuous = false;
-
-    let finalText = state.voiceTranscript || "";
-    state.voiceRecognition = recognition;
-    if (els.feedbackVoiceStatus) els.feedbackVoiceStatus.textContent = "Listening…";
-    if (els.feedbackVoiceBtn) els.feedbackVoiceBtn.textContent = "■ Stop";
-
-    recognition.onresult = (event) => {
-      let interim = "";
-      for (let i = event.resultIndex; i < event.results.length; i += 1) {
-        const text = event.results[i][0]?.transcript || "";
-        if (event.results[i].isFinal) finalText = (finalText + " " + text).trim();
-        else interim += text;
-      }
-      state.voiceTranscript = finalText;
-      if (els.feedbackVoiceStatus) {
-        els.feedbackVoiceStatus.textContent = (finalText || interim)
-          ? `Voice: ${finalText || interim}`
-          : "Listening…";
-      }
-    };
-
-    recognition.onerror = (event) => {
-      if (els.feedbackVoiceStatus) {
-        els.feedbackVoiceStatus.textContent = `Voice error: ${event.error || "unknown"}`;
-      }
-    };
-
-    recognition.onend = () => {
-      state.voiceRecognition = null;
-      if (els.feedbackVoiceBtn) els.feedbackVoiceBtn.textContent = "🎙 Explain by voice";
-      if (els.feedbackVoiceStatus && state.voiceTranscript) {
-        els.feedbackVoiceStatus.textContent = "Voice feedback captured";
-      }
-    };
-
-    recognition.start();
+    return ["hi", "hinglish", "en"].includes(lang)
+      ? lang
+      : "auto";
   }
+
+
+  function stopVoiceTracks() {
+    try {
+      state.voiceStream
+        ?.getTracks?.()
+        .forEach((track) => track.stop());
+    } catch {}
+
+    state.voiceStream = null;
+  }
+
+
+  async function transcribeFeedbackAudio(blob) {
+    const form = new FormData();
+
+    let extension = "webm";
+
+    if (blob.type.includes("mp4")) {
+      extension = "m4a";
+    } else if (blob.type.includes("ogg")) {
+      extension = "ogg";
+    }
+
+    form.append(
+      "audio",
+      blob,
+      `feedback.${extension}`
+    );
+
+    form.append(
+      "language",
+      feedbackVoiceLanguage()
+    );
+
+    const response = await fetch(
+      `${API_BASE}/api/feedback/voice-transcribe`,
+      {
+        method: "POST",
+        credentials: "include",
+        body: form,
+      }
+    );
+
+    const data = await response
+      .json()
+      .catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(
+        data?.detail ||
+        `Voice transcription failed (${response.status})`
+      );
+    }
+
+    const transcript =
+      safeText(data?.transcript).trim();
+
+    if (!transcript) {
+      throw new Error(
+        "Voice transcription returned no text"
+      );
+    }
+
+    state.voiceTranscript = transcript;
+
+    if (els.feedbackVoiceStatus) {
+      els.feedbackVoiceStatus.textContent =
+        `Voice captured: ${transcript}`;
+    }
+
+    return transcript;
+  }
+
+
+  async function startVoiceFeedback() {
+    // Second click stops current recording.
+    if (
+      state.voiceRecorder &&
+      state.voiceRecorder.state === "recording"
+    ) {
+      state.voiceRecorder.stop();
+      return;
+    }
+
+    if (
+      !navigator.mediaDevices?.getUserMedia ||
+      !window.MediaRecorder
+    ) {
+      showToast(
+        "Voice recording is not supported in this browser"
+      );
+      return;
+    }
+
+    try {
+      const stream =
+        await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
+
+      state.voiceStream = stream;
+      state.voiceChunks = [];
+      state.voiceTranscript = "";
+
+      const supportedTypes = [
+        "audio/webm;codecs=opus",
+        "audio/webm",
+        "audio/mp4",
+      ];
+
+      const mimeType =
+        supportedTypes.find((type) =>
+          MediaRecorder.isTypeSupported?.(type)
+        ) || "";
+
+      const recorder = mimeType
+        ? new MediaRecorder(
+            stream,
+            { mimeType }
+          )
+        : new MediaRecorder(stream);
+
+      state.voiceRecorder = recorder;
+
+      if (els.feedbackVoiceStatus) {
+        els.feedbackVoiceStatus.textContent =
+          "Recording… speak naturally in Hindi, Hinglish or English.";
+      }
+
+      if (els.feedbackVoiceBtn) {
+        els.feedbackVoiceBtn.textContent =
+          "■ Stop & transcribe";
+      }
+
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size) {
+          state.voiceChunks.push(event.data);
+        }
+      };
+
+      recorder.onerror = () => {
+        stopVoiceTracks();
+
+        state.voiceRecorder = null;
+        state.voiceTranscriptionPromise = null;
+
+        if (els.feedbackVoiceBtn) {
+          els.feedbackVoiceBtn.textContent =
+            "🎙 Explain by voice";
+        }
+
+        if (els.feedbackVoiceStatus) {
+          els.feedbackVoiceStatus.textContent =
+            "Recording failed. Please try again.";
+        }
+      };
+
+      recorder.onstop = () => {
+        const chunks =
+          [...state.voiceChunks];
+
+        const type =
+          recorder.mimeType ||
+          chunks[0]?.type ||
+          "audio/webm";
+
+        stopVoiceTracks();
+
+        state.voiceRecorder = null;
+
+        if (els.feedbackVoiceBtn) {
+          els.feedbackVoiceBtn.textContent =
+            "🎙 Explain by voice";
+        }
+
+        if (!chunks.length) {
+          if (els.feedbackVoiceStatus) {
+            els.feedbackVoiceStatus.textContent =
+              "No audio captured. Please try again.";
+          }
+
+          return;
+        }
+
+        const blob =
+          new Blob(
+            chunks,
+            { type }
+          );
+
+        if (els.feedbackVoiceStatus) {
+          els.feedbackVoiceStatus.textContent =
+            "Transcribing your feedback…";
+        }
+
+        state.voiceTranscriptionPromise =
+          transcribeFeedbackAudio(blob)
+            .catch((error) => {
+              console.warn(
+                "voice transcription",
+                error
+              );
+
+              state.voiceTranscript = "";
+
+              if (els.feedbackVoiceStatus) {
+                els.feedbackVoiceStatus.textContent =
+                  error?.message ||
+                  "Voice transcription failed. Please try again.";
+              }
+
+              throw error;
+            })
+            .finally(() => {
+              state.voiceTranscriptionPromise =
+                null;
+            });
+      };
+
+      recorder.start();
+
+    } catch (error) {
+      stopVoiceTracks();
+
+      state.voiceRecorder = null;
+
+      if (els.feedbackVoiceBtn) {
+        els.feedbackVoiceBtn.textContent =
+          "🎙 Explain by voice";
+      }
+
+      const denied =
+        error?.name === "NotAllowedError" ||
+        error?.name === "SecurityError";
+
+      const message = denied
+        ? "Microphone permission was denied. Allow microphone access and try again."
+        : (
+            error?.message ||
+            "Could not start voice recording."
+          );
+
+      if (els.feedbackVoiceStatus) {
+        els.feedbackVoiceStatus.textContent =
+          message;
+      }
+
+      showToast(message);
+    }
+  }
+
 
   function markFeedbackButtons(index, rating) {
     const assistantMessages = [...els.messages.querySelectorAll(".message.assistant")];
