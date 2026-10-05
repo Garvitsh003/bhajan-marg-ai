@@ -3,7 +3,7 @@ from typing import Any
 
 from . import db
 from .config import settings
-from .llm import judge_evidence
+from .llm import judge_evidence, expand_retrieval_queries
 from .text import ms_to_clock, youtube_at
 from .search_backend import hybrid_search, rerank
 
@@ -107,12 +107,57 @@ def retrieve(
     # 1. Search the full indexed corpus
     # ---------------------------------------------------------
 
-    candidates = hybrid_search(
-        question
-    )
+    retrieval_queries = expand_retrieval_queries(question) or [question]
 
-    # Rerank more candidates than will eventually be sent
-    # to the answer generator.
+    # Search every safe language/spelling variant, then fuse by point id.
+    # This raises recall for Roman Hindi / Hinglish without changing answer
+    # semantics: the original standalone question remains authoritative for
+    # reranking, evidence judging and answer generation.
+    merged: dict[str, dict] = {}
+
+    for query_index, retrieval_query in enumerate(retrieval_queries):
+        results = hybrid_search(retrieval_query)
+
+        for rank, item in enumerate(results):
+            point_id = str(
+                item.get("point_id")
+                or f'{item.get("video_id")}:{item.get("chunk_index")}'
+            )
+
+            row = merged.get(point_id)
+
+            if row is None:
+                row = {
+                    **item,
+                    "matched_queries": [],
+                    "query_variant_ranks": {},
+                    "multi_query_rrf": 0.0,
+                    "best_fusion_score": float(item.get("fusion_score", 0.0) or 0.0),
+                }
+                merged[point_id] = row
+
+            # RRF over query variants gives exact Hindi/BM25 hits a fair chance
+            # even when the original Roman query is weak.
+            weight = 1.10 if query_index == 0 else 1.0
+            row["multi_query_rrf"] += weight / (60.0 + rank + 1.0)
+            row["best_fusion_score"] = max(
+                float(row.get("best_fusion_score", 0.0) or 0.0),
+                float(item.get("fusion_score", 0.0) or 0.0),
+            )
+            row["matched_queries"].append(retrieval_query)
+            row["query_variant_ranks"][retrieval_query] = rank + 1
+
+    candidates = sorted(
+        merged.values(),
+        key=lambda item: (
+            float(item.get("multi_query_rrf", 0.0) or 0.0),
+            float(item.get("best_fusion_score", 0.0) or 0.0),
+        ),
+        reverse=True,
+    )[: max(int(getattr(settings, "fused_candidates", 50) or 50), 60)]
+
+    # Rerank against the ORIGINAL standalone question. Query variants exist
+    # only to improve recall and must not redefine what the user asked.
     full_ranked = rerank(
         question,
         candidates,
@@ -500,6 +545,7 @@ def retrieve(
             "reason"
         ),
         "sources": cards,
+        "search_queries": retrieval_queries,
 
         # Preserve the entire reranker output for debugging.
         # Only final answer evidence is filtered.
