@@ -9,12 +9,32 @@ from .llm import ollama_chat
 
 log = logging.getLogger(__name__)
 
+CONTROLLED = {
+    "situation_ids": {
+        "unrequited_love": ["एकतरफा प्रेम", "अप्रत्युत्तरित प्रेम", "प्रेम का प्रत्युत्तर न मिलना",
+                            "सामने वाला प्रेम न करे", "प्रेम को न समझना", "one sided love",
+                            "unrequited love", "love is not reciprocated"],
+        "attachment_in_love": ["प्रेम में आसक्ति", "प्रेम में अपेक्षा", "emotional attachment"],
+        "relationship_conflict": ["रिश्ते में विवाद", "relationship conflict"],
+        "grief_separation": ["वियोग", "बिछड़ना", "separation", "grief"],
+        "anxiety_fear": ["चिंता", "भय", "घबराहट", "anxiety", "fear"],
+        "anger": ["क्रोध", "गुस्सा", "anger"],
+        "jealousy": ["ईर्ष्या", "जलन", "jealousy"],
+        "temptation": ["वासना", "लालच", "प्रलोभन", "temptation"],
+        "devotional_practice": ["भक्ति", "साधना", "नाम जप", "devotional practice"],
+    },
+    "intent_ids": {
+        "seek_guidance": ["क्या करना चाहिए", "क्या करें", "मार्गदर्शन", "what should i do", "seek guidance"],
+        "understand_teaching": ["अर्थ क्या है", "समझना", "what does it mean", "understand"],
+        "seek_practice": ["कैसे करें", "अभ्यास", "how to practice"],
+        "seek_reassurance": ["आश्वासन", "सांत्वना", "reassurance"],
+    },
+}
 
 def _list(value: Any, limit: int = 12) -> list[str]:
     if not isinstance(value, list):
         return []
-    out: list[str] = []
-    seen: set[str] = set()
+    out, seen = [], set()
     for item in value:
         if not isinstance(item, str):
             continue
@@ -27,21 +47,24 @@ def _list(value: Any, limit: int = 12) -> list[str]:
             break
     return out
 
+def _ids_from_text(value: Any, vocabulary: dict[str, list[str]]) -> list[str]:
+    values = " ".join(str(x) for x in value) if isinstance(value, list) else str(value or "")
+    values = values.casefold()
+    return [key for key, phrases in vocabulary.items()
+            if any(p.casefold() in values for p in phrases)]
 
-def understand_query(
-    question: str,
-    *,
-    llm_call: Callable[..., str] = ollama_chat,
-) -> dict[str, Any]:
-    """Return retrieval intent only; never generate an answer."""
+def understand_query(question: str, *, llm_call: Callable[..., str] = ollama_chat) -> dict[str, Any]:
     prompt = f"""Understand this user question for retrieval against a Hindi Bhajan Marg transcript corpus.
 
 USER QUESTION:
 {question}
 
-Extract only what is explicitly or strongly implied by the user's question.
-Do not answer it. Do not add spiritual advice. Preserve negation, uncertainty,
-people/entities, and the requested action.
+Extract only what is explicitly or strongly implied. Do not answer. Preserve
+negation, uncertainty, entities, emotions, and requested action.
+
+Use these controlled IDs where applicable:
+situation_ids={list(CONTROLLED["situation_ids"])}
+intent_ids={list(CONTROLLED["intent_ids"])}
 
 Return JSON:
 {{
@@ -49,69 +72,82 @@ Return JSON:
   "domain": "",
   "situation": "",
   "intent": "",
-  "entities": [],
-  "emotions": [],
-  "constraints": [],
-  "concepts": [],
-  "retrieval_phrases": []
+  "situation_ids": [],
+  "intent_ids": [],
+  "relationship": "romantic|family|friendship|devotional|",
+  "reciprocity": "not_reciprocated|uncertain|reciprocated|",
+  "entities": [], "emotions": [], "constraints": [],
+  "concepts": [], "retrieval_phrases": []
 }}
 
-retrieval_phrases should contain concise Hindi/English phrases that express
-the same situation and intent, not generic synonyms or advice.
+retrieval_phrases must express the same situation and intent, not generic advice.
 """
     try:
-        data = llm_call(
+        parsed = json.loads(llm_call(
             [{"role": "user", "content": prompt}],
-            temperature=0.0,
-            json_mode=True,
-            num_predict=700,
-        )
-        parsed = json.loads(data)
+            temperature=0.0, json_mode=True, num_predict=900,
+        ))
         if not isinstance(parsed, dict):
             raise ValueError("query intent is not an object")
     except Exception as exc:
         log.warning("query intent unavailable: %s", type(exc).__name__)
-        return {
-            "language": "unknown",
-            "domain": "",
-            "situation": "",
-            "intent": "",
-            "entities": [],
-            "emotions": [],
-            "constraints": [],
-            "concepts": [],
-            "retrieval_phrases": [question],
-        }
+        parsed = {}
+
+    situation_ids = _list(parsed.get("situation_ids"), 8)
+    intent_ids = _list(parsed.get("intent_ids"), 6)
+    for x in _ids_from_text(
+        [parsed.get("situation", ""), *parsed.get("retrieval_phrases", [])],
+        CONTROLLED["situation_ids"],
+    ):
+        if x not in situation_ids:
+            situation_ids.append(x)
+    for x in _ids_from_text(
+        [parsed.get("intent", ""), *parsed.get("retrieval_phrases", [])],
+        CONTROLLED["intent_ids"],
+    ):
+        if x not in intent_ids:
+            intent_ids.append(x)
+
+    phrases = _list(parsed.get("retrieval_phrases"), 8)
+    for sid in situation_ids:
+        for phrase in CONTROLLED["situation_ids"].get(sid, [])[:4]:
+            if phrase not in phrases:
+                phrases.append(phrase)
+    for iid in intent_ids:
+        for phrase in CONTROLLED["intent_ids"].get(iid, [])[:3]:
+            if phrase not in phrases:
+                phrases.append(phrase)
 
     return {
         "language": str(parsed.get("language", "unknown")),
         "domain": str(parsed.get("domain", "")),
         "situation": str(parsed.get("situation", "")),
         "intent": str(parsed.get("intent", "")),
+        "situation_ids": situation_ids[:8],
+        "intent_ids": intent_ids[:6],
+        "relationship": str(parsed.get("relationship", "")),
+        "reciprocity": str(parsed.get("reciprocity", "")),
         "entities": _list(parsed.get("entities")),
         "emotions": _list(parsed.get("emotions")),
         "constraints": _list(parsed.get("constraints")),
-        "concepts": _list(parsed.get("concepts")),
-        "retrieval_phrases": _list(parsed.get("retrieval_phrases"), 8) or [question],
+        "concepts": _list(parsed.get("concepts"), 12),
+        "retrieval_phrases": phrases[:12] or [question],
     }
 
-
 def intent_to_queries(intent: dict[str, Any], original: str) -> list[str]:
-    """Create a bounded semantic recall set without changing user meaning."""
-    values: list[str] = [original]
-    for key in ("situation", "intent"):
+    values = [original]
+    for key in ("situation", "intent", "relationship", "reciprocity"):
         value = str(intent.get(key, "")).strip()
         if value and value not in values:
             values.append(value)
-
-    for value in _list(intent.get("retrieval_phrases"), 6):
+    for key in ("situation_ids", "intent_ids"):
+        for value in _list(intent.get(key), 8):
+            if value not in values:
+                values.append(value)
+    for value in _list(intent.get("retrieval_phrases"), 10):
         if value not in values:
             values.append(value)
-
     concepts = _list(intent.get("concepts"), 8)
     if concepts:
         values.append(" ".join(concepts))
-
-    # Keep the expansion deliberately small. Broad synonym clouds reduce
-    # precision and can pollute the retrieval pool.
-    return values[:8]
+    return values[:10]
