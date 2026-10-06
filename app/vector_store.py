@@ -79,7 +79,7 @@ def index_chunks(video: dict[str, Any], chunks: list[dict[str, Any]]) -> list[di
     if not chunks:
         return []
 
-    texts = [x["text"] for x in chunks]
+    texts = [x.get("search_text") or x["text"] for x in chunks]
     dense = embedding_model().encode(
         texts,
         batch_size=16,
@@ -103,6 +103,8 @@ def index_chunks(video: dict[str, Any], chunks: list[dict[str, Any]]) -> list[di
             "segment_start": chunk["segment_start"],
             "segment_end": chunk["segment_end"],
             "text": chunk["text"],
+            "search_text": chunk.get("search_text", chunk["text"]),
+            "semantic": chunk.get("semantic", {}),
             "caption_segments": chunk.get('caption_segments', []),
         }
         points.append(
@@ -181,7 +183,7 @@ def rerank(query: str, candidates: list[dict], top_k: int) -> list[dict]:
             })
         return out
 
-    pairs = [(query, x["text"]) for x in candidates]
+    pairs = [(query, x.get("search_text") or (str(x.get("title", "")) + "\n" + x["text"])) for x in candidates]
     raw = reranker_model().predict(pairs, batch_size=16, show_progress_bar=False)
     raw = np.asarray(raw, dtype=float).reshape(-1)
 
