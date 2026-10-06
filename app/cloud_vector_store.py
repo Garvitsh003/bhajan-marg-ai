@@ -201,14 +201,11 @@ def rerank(
             ).split()
         )
 
-        candidate_text = " ".join(
-            str(
-                item.get(
-                    "text",
-                    "",
-                )
-            ).split()
-        )
+        semantic = item.get("semantic") or {}
+        search_text = " ".join(str(item.get("search_text", "")).split())
+        candidate_text = " ".join(str(item.get("text", "")).split())
+        if search_text:
+            candidate_text = search_text + "\nEVIDENCE: " + candidate_text
 
         # 850 chars is enough to expose the semantic intent of
         # most transcript chunks while keeping the Gemini input
@@ -219,6 +216,7 @@ def rerank(
         blocks.append(
             f"[CANDIDATE {i}]\n"
             f"TITLE: {title}\n"
+            f"SEMANTIC: {json.dumps(semantic, ensure_ascii=False)}\n"
             f"TEXT: {candidate_text}"
         )
 
