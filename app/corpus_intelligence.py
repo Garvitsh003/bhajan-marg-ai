@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .config import settings
+from .llm import parse_json
 
 log = logging.getLogger(__name__)
 
@@ -287,7 +288,7 @@ def build_video_artifact(
             json_mode=True,
             num_predict=1800,
         )
-        data = _clean_json_object(json.loads(raw))
+        data = _clean_json_object(parse_json(raw, {}))
         group_meta = _clean_json_object(data.get("group"))
 
         for target, key in (
