@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     sqlite_path: str = "./data/bhajan.db"
     transcript_dir: str = "./data/transcripts"
     temp_dir: str = "./data/tmp"
+    corpus_intelligence_dir: str = "./data/corpus_intelligence"
+    corpus_intelligence_on_ingest: bool = False
 
     daily_update_enabled: bool = True
     daily_update_hour: int = 2
