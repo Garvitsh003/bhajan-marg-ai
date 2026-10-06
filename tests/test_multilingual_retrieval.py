@@ -30,6 +30,22 @@ def test_retrieve_searches_all_variants_and_reranks_original(monkeypatch):
 
     monkeypatch.setattr(
         retrieval,
+        "understand_query",
+        lambda question: {
+            "language": "en",
+            "domain": "spiritual practice",
+            "situation": "",
+            "intent": "",
+            "entities": [],
+            "emotions": [],
+            "constraints": [],
+            "concepts": [],
+            "retrieval_phrases": [],
+        },
+    )
+
+    monkeypatch.setattr(
+        retrieval,
         "expand_retrieval_queries",
         lambda question: queries,
     )
