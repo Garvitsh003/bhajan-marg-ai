@@ -3,7 +3,9 @@ from typing import Any
 
 from . import db
 from .chunking import chunk_transcript
+from .corpus_enrichment import enrich_chunks
 from .youtube import enrich_video, get_or_create_transcript, list_channel_videos
+from .config import settings
 from .vector_store import delete_video, index_chunks
 
 log = logging.getLogger(__name__)
@@ -28,6 +30,8 @@ def ingest_one(video: dict[str, Any], force: bool = False) -> str:
             return "skipped"
 
         chunks = chunk_transcript(segments)
+        if settings.corpus_intelligence_on_ingest:
+            chunks = enrich_chunks(video, chunks)
         if not chunks:
             raise RuntimeError("Transcript produced zero chunks")
 
