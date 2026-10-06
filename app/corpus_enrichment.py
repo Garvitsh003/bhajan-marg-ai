@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .corpus_intelligence import load_artifact, make_search_text
+from .corpus_intelligence import load_artifact, make_search_text\nfrom .semantic_normalizer import normalize_artifact
 
 
 def _clean_list(value: Any, limit: int = 12) -> list[str]:
@@ -97,7 +97,7 @@ def enrich_chunks(
 ) -> list[dict[str, Any]]:
     """Enrich chunks with retrieval metadata while preserving exact evidence."""
 
-    artifact = load_artifact(str(video["video_id"]))
+    artifact = load_artifact(str(video["video_id"]))\n\n    if artifact:\n        artifact = normalize_artifact(artifact)
 
     # Intelligence is optional. If no artifact exists, return the original
     # chunks untouched rather than making ingestion fail.
