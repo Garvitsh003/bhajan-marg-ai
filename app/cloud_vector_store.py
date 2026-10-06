@@ -202,10 +202,10 @@ def rerank(
         )
 
         semantic = item.get("semantic") or {}
-        search_text = " ".join(str(item.get("search_text", "")).split())
+        # Keep actual transcript evidence visible to the reranker. The semantic
+        # search_text may be long, so it must not crowd the evidence out of the
+        # bounded Gemini prompt.
         candidate_text = " ".join(str(item.get("text", "")).split())
-        if search_text:
-            candidate_text = search_text + "\nEVIDENCE: " + candidate_text
 
         # 850 chars is enough to expose the semantic intent of
         # most transcript chunks while keeping the Gemini input
