@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     admin_token: str = ""
 
     def ensure_dirs(self):
-        for p in (self.data_dir, self.transcript_dir, self.temp_dir):
+        for p in (self.data_dir, self.transcript_dir, self.temp_dir, self.corpus_intelligence_dir):
             Path(p).mkdir(parents=True, exist_ok=True)
 
 
