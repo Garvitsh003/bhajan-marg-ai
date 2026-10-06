@@ -111,7 +111,7 @@ def main():
 
         for point in points:
             payload = dict(point.payload or {})
-            text = str(payload.get("text", "")).strip()
+            text = str(payload.get("search_text") or payload.get("text", "")).strip()
             if not text:
                 continue
 

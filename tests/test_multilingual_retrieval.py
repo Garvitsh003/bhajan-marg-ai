@@ -30,6 +30,22 @@ def test_retrieve_searches_all_variants_and_reranks_original(monkeypatch):
 
     monkeypatch.setattr(
         retrieval,
+        "understand_query",
+        lambda question: {
+            "language": "en",
+            "domain": "spiritual practice",
+            "situation": "",
+            "intent": "",
+            "entities": [],
+            "emotions": [],
+            "constraints": [],
+            "concepts": [],
+            "retrieval_phrases": [],
+        },
+    )
+
+    monkeypatch.setattr(
+        retrieval,
         "expand_retrieval_queries",
         lambda question: queries,
     )
@@ -92,3 +108,70 @@ def test_retrieve_searches_all_variants_and_reranks_original(monkeypatch):
     assert result["search_queries"] == queries
     assert result["level"] == "direct"
     assert result["sources"][0]["video_id"] == "vid-hindi"
+
+
+def test_intent_aware_retrieval_merges_semantic_queries(monkeypatch):
+    monkeypatch.setattr(
+        retrieval,
+        "understand_query",
+        lambda question: {
+            "language": "hinglish",
+            "domain": "relationship",
+            "situation": "unrequited love",
+            "intent": "what should I do",
+            "entities": [],
+            "emotions": ["hurt"],
+            "constraints": ["not reciprocated"],
+            "concepts": ["एकतरफा प्रेम"],
+            "retrieval_phrases": ["सामने वाला प्रेम न करे तो क्या करें?"],
+        },
+    )
+    monkeypatch.setattr(
+        retrieval,
+        "expand_retrieval_queries",
+        lambda question: [question, "जिससे प्रेम हो वह प्रेम न करे"],
+    )
+
+    searched = []
+
+    def fake_search(query, limit=None):
+        searched.append(query)
+        return [{
+            "point_id": "target",
+            "video_id": "5vzzUFSo_E4",
+            "title": "हम उससे बहुत प्यार करते हैं पर फिर भी वो न समझे तो क्या करना चाहिए?",
+            "chunk_index": 3,
+            "start_ms": 120000,
+            "end_ms": 180000,
+            "text": "प्रेम के विषय में वास्तविक transcript evidence।",
+            "search_text": "title semantic situation intent",
+            "semantic": {"situations": ["एकतरफा प्रेम"]},
+            "fusion_score": 0.9,
+        }]
+
+    monkeypatch.setattr(retrieval, "hybrid_search", fake_search)
+    monkeypatch.setattr(
+        retrieval,
+        "rerank",
+        lambda question, candidates, top_k: [
+            {**candidates[0], "rerank_score": 0.97}
+        ],
+    )
+    monkeypatch.setattr(
+        retrieval,
+        "judge_evidence",
+        lambda question, sources, algorithmic_level: {
+            "level": "direct",
+            "source_indices": [0],
+            "reason": "Direct semantic match",
+        },
+    )
+
+    result = retrieval.retrieve(
+        "mei ek ladki se bohot pyaar krta hu pr voh merse pyaar nhi karti, mujhe kya krna chahiye?"
+    )
+
+    assert result["level"] == "direct"
+    assert result["sources"][0]["video_id"] == "5vzzUFSo_E4"
+    assert result["query_intent"]["situation"] == "unrequited love"
+    assert "सामने वाला प्रेम न करे तो क्या करें?" in result["search_queries"]

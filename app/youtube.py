@@ -312,6 +312,7 @@ def save_transcript(video: dict, segments: list[dict], source: str) -> tuple[str
     }
     serialized = json.dumps(doc, ensure_ascii=False, separators=(",", ":"))
     digest = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+    doc["transcript_hash"] = digest
     path = Path(settings.transcript_dir) / f"{video['video_id']}.json"
     path.write_text(
         json.dumps(doc, ensure_ascii=False, indent=2),

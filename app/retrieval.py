@@ -4,6 +4,7 @@ from typing import Any
 from . import db
 from .config import settings
 from .llm import judge_evidence, expand_retrieval_queries
+from .query_intent import understand_query, intent_to_queries
 from .text import ms_to_clock, youtube_at
 from .search_backend import hybrid_search, rerank
 
@@ -104,10 +105,29 @@ def retrieve(
     question: str,
 ) -> dict[str, Any]:
     # ---------------------------------------------------------
-    # 1. Search the full indexed corpus
+    # 1. Understand the user's situation before retrieval
     # ---------------------------------------------------------
+    query_intent = understand_query(question)
+    intent_queries = intent_to_queries(query_intent, question)
+    language_queries = expand_retrieval_queries(question) or [question]
 
-    retrieval_queries = expand_retrieval_queries(question) or [question]
+    retrieval_queries: list[str] = []
+    seen_queries: set[str] = set()
+    for value in [*intent_queries, *language_queries]:
+        value = " ".join(str(value).split()).strip()
+        if not value:
+            continue
+        key = value.casefold()
+        if key in seen_queries:
+            continue
+        seen_queries.add(key)
+        retrieval_queries.append(value)
+
+    retrieval_queries = retrieval_queries[:10] or [question]
+
+    # ---------------------------------------------------------
+    # 2. Search the indexed corpus
+    # ---------------------------------------------------------
 
     # Search every safe language/spelling variant, then fuse by point id.
     # This raises recall for Roman Hindi / Hinglish without changing answer
@@ -167,8 +187,59 @@ def retrieve(
         ),
     )
 
+    # V1.5.1 recall recovery: if the normal pool is weak, search a much
+    # wider slice of every semantic/language query before declaring none.
+    recovery_trigger = (
+        not full_ranked
+        or _score(full_ranked[0]) < settings.recovery_trigger_threshold
+    )
+
+    if recovery_trigger:
+        recovery_limit = max(
+            int(getattr(settings, "recovery_candidates", 250)),
+            int(getattr(settings, "fused_candidates", 50)),
+        )
+        for retrieval_query in retrieval_queries:
+            results = hybrid_search(retrieval_query, limit=recovery_limit)
+            for rank, item in enumerate(results):
+                point_id = str(
+                    item.get("point_id")
+                    or f'{item.get("video_id")}:{item.get("chunk_index")}'
+                )
+                row = merged.get(point_id)
+                if row is None:
+                    row = {
+                        **item,
+                        "matched_queries": [],
+                        "query_variant_ranks": {},
+                        "multi_query_rrf": 0.0,
+                        "best_fusion_score": float(item.get("fusion_score", 0.0) or 0.0),
+                    }
+                    merged[point_id] = row
+                row["multi_query_rrf"] += 0.75 / (60.0 + rank + 1.0)
+                row["best_fusion_score"] = max(
+                    float(row.get("best_fusion_score", 0.0) or 0.0),
+                    float(item.get("fusion_score", 0.0) or 0.0),
+                )
+                row["matched_queries"].append(retrieval_query)
+
+        candidates = sorted(
+            merged.values(),
+            key=lambda item: (
+                float(item.get("multi_query_rrf", 0.0) or 0.0),
+                float(item.get("best_fusion_score", 0.0) or 0.0),
+            ),
+            reverse=True,
+        )[:recovery_limit]
+
+        full_ranked = rerank(
+            question,
+            candidates,
+            top_k=max(settings.final_sources * 6, 20),
+        )
+
     # ---------------------------------------------------------
-    # 2. Remove weak passages when there is a dominant match
+    # 3. Remove weak passages when there is a dominant match
     # ---------------------------------------------------------
 
     ranked_for_selection = (
@@ -178,7 +249,7 @@ def retrieve(
     )
 
     # ---------------------------------------------------------
-    # 3. Build evidence contexts
+    # 4. Build evidence contexts
     # ---------------------------------------------------------
 
     selected: list[dict] = []
@@ -268,7 +339,7 @@ def retrieve(
             break
 
     # ---------------------------------------------------------
-    # 4. Determine evidence quality
+    # 5. Determine evidence quality
     # ---------------------------------------------------------
 
     algorithmic_level = (
@@ -324,7 +395,7 @@ def retrieve(
         )
 
     # ---------------------------------------------------------
-    # 5. Final evidence filtering
+    # 6. Final evidence filtering
     # ---------------------------------------------------------
 
     # The reranker score is excellent for ordering candidates,
@@ -461,7 +532,7 @@ def retrieve(
         level = "none"
 
     # ---------------------------------------------------------
-    # 6. Build source cards
+    # 7. Build source cards
     # ---------------------------------------------------------
 
     cards: list[dict] = []
@@ -536,7 +607,7 @@ def retrieve(
         )
 
     # ---------------------------------------------------------
-    # 7. Return result
+    # 8. Return result
     # ---------------------------------------------------------
 
     return {
@@ -546,6 +617,7 @@ def retrieve(
         ),
         "sources": cards,
         "search_queries": retrieval_queries,
+        "query_intent": query_intent,
 
         # Preserve the entire reranker output for debugging.
         # Only final answer evidence is filtered.

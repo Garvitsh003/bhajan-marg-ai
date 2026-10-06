@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     dense_candidates: int = 40
     sparse_candidates: int = 40
     fused_candidates: int = 50
+    recovery_candidates: int = 250
+    recovery_trigger_threshold: float = 0.68
     final_sources: int = 5
     context_neighbors: int = 1
 
@@ -47,6 +49,8 @@ class Settings(BaseSettings):
     sqlite_path: str = "./data/bhajan.db"
     transcript_dir: str = "./data/transcripts"
     temp_dir: str = "./data/tmp"
+    corpus_intelligence_dir: str = "./data/corpus_intelligence"
+    corpus_intelligence_on_ingest: bool = False
 
     daily_update_enabled: bool = True
     daily_update_hour: int = 2
@@ -64,7 +68,7 @@ class Settings(BaseSettings):
     admin_token: str = ""
 
     def ensure_dirs(self):
-        for p in (self.data_dir, self.transcript_dir, self.temp_dir):
+        for p in (self.data_dir, self.transcript_dir, self.temp_dir, self.corpus_intelligence_dir):
             Path(p).mkdir(parents=True, exist_ok=True)
 
 
