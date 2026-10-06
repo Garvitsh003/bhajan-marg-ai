@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     dense_candidates: int = 40
     sparse_candidates: int = 40
     fused_candidates: int = 50
+    recovery_candidates: int = 250
+    recovery_trigger_threshold: float = 0.68
     final_sources: int = 5
     context_neighbors: int = 1
 
