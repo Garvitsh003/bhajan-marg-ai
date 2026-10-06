@@ -57,8 +57,8 @@ def test_intent_query_expansion_is_bounded():
         "original question",
     )
     assert values[0] == "original question"
-    assert len(values) <= 8
-    assert "एकतरफा प्रेम" in values
+    assert len(values) <= 12
+    assert "एकतरफा प्रेम" in values\n    assert "सामने वाला प्रेम न समझे तो क्या करना चाहिए" in values
 
 
 def test_chunk_enrichment_preserves_evidence_and_adds_search_text(monkeypatch):
