@@ -102,3 +102,19 @@ def test_chunk_enrichment_preserves_evidence_and_adds_search_text(monkeypatch):
     assert result[0]["text"] == chunks[0]["text"]
     assert "एकतरफा प्रेम" in result[0]["search_text"]
     assert "सामने वाला प्रेम न करे" in result[0]["semantic"]["situations"]
+
+
+def test_semantic_normalizer_maps_free_form_metadata_to_controlled_ids():
+    from app.semantic_normalizer import normalize_semantic
+    value = normalize_semantic({
+        "situations": ["सामने वाला प्रेम न करे"],
+        "intents": ["क्या करना चाहिए"],
+        "concepts": [],
+        "relationship": "romantic",
+        "reciprocity": "not_reciprocated",
+    })
+    assert "unrequited_love" in value["situation_ids"]
+    assert "seek_guidance" in value["intent_ids"]
+    assert value["relationship"] == "romantic"
+    assert value["reciprocity"] == "not_reciprocated"
+    assert "एकतरफा प्रेम" in value["concepts"]
