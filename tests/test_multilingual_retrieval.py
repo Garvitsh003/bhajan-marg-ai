@@ -138,7 +138,7 @@ def test_intent_aware_retrieval_merges_semantic_queries(monkeypatch):
         searched.append(query)
         return [{
             "point_id": "target",
-            "video_id": "5vzzUFSo_E4",
+            "video_id": "5yzzUFS0_E4",
             "title": "हम उससे बहुत प्यार करते हैं पर फिर भी वो न समझे तो क्या करना चाहिए?",
             "chunk_index": 3,
             "start_ms": 120000,
