@@ -9,6 +9,8 @@ from typing import Literal
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
@@ -20,7 +22,8 @@ from .budget import deadline, request_id
 from .retrieval import retrieve
 from .search_backend import ensure_collection
 from .quality import record_chat_case
-from .v1_api import router as v1_router
+from .security import limiter
+from .v1_api import router as v1_router, _require_admin
 
 logging.basicConfig(
     level=logging.INFO,
@@ -55,6 +58,25 @@ api = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+api.state.limiter = limiter
+api.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+@api.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(self), geolocation=()")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; "
+        "form-action 'self' https://accounts.google.com; img-src 'self' data: https:; "
+        "font-src 'self' data:; style-src 'self' 'unsafe-inline'; "
+        "script-src 'self' 'unsafe-inline'; connect-src 'self' https:",
+    )
+    return response
+
 api.include_router(v1_router)
 api.mount('/assets', StaticFiles(directory=Path(__file__).parent / 'static'), name='assets')
 
@@ -115,6 +137,7 @@ def corpus_stats():
 
 
 @api.post("/api/chat")
+@limiter.limit("10/minute")
 def chat(req: ChatRequest, request: Request):
     trace_id = str(uuid.uuid4())
     trace_token = request_id.set(trace_id)
@@ -242,18 +265,13 @@ def _chat(req: ChatRequest, trace_id: str, started: float):
     return JSONResponse(result, headers={'X-Request-ID':trace_id})
 
 
-def _check_admin(token: str | None):
-    if not token or token != settings.admin_token:
-        raise HTTPException(status_code=401, detail="Invalid admin token")
-
-
 @api.post("/api/admin/update")
 def update(
     req: UpdateRequest,
     background_tasks: BackgroundTasks,
     x_admin_token: str | None = Header(default=None),
 ):
-    _check_admin(x_admin_token)
+    _require_admin(x_admin_token)
 
     if getattr(settings, "app_mode", "local").lower() == "cloud":
         raise HTTPException(
@@ -273,6 +291,6 @@ def update(
 
 
 # CORS must also cover unhandled 500 responses, not just successful routes.
-app = CORSMiddleware(api, allow_origins=allow_origins or ['*'],
+app = CORSMiddleware(api, allow_origins=allow_origins,
     allow_credentials=False, allow_methods=['*'], allow_headers=['*'],
     expose_headers=['X-Request-ID'])

@@ -20,6 +20,7 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 from psycopg.types.json import Jsonb
 
 from .config import settings
+from .security import limiter
 from .product_db import configured as database_configured
 from .product_db import connection
 from .quality import attach_feedback, attach_message, version_snapshot
@@ -334,27 +335,32 @@ def v1_status():
 
 
 @router.post("/api/auth/register")
-def register(body: RegisterRequest, request: Request, response: Response):
+@limiter.limit("5/minute")
+def register(body: RegisterRequest, request: Request):
+    # Keep the response identical for new and existing addresses. Registration
+    # does not auto-login: that would reveal account existence via the cookie.
     email = _normalize_email(body.email)
     name = _clean_title(body.name, email.split("@")[0])
     uid = uuid.uuid4()
+    password_hash = _password_hash(body.password)
     with connection() as conn:
-        exists = conn.execute("SELECT id FROM users WHERE email=%s", (email,)).fetchone()
-        if exists:
-            raise HTTPException(status_code=409, detail="An account with this email already exists")
         conn.execute(
             """
             INSERT INTO users(id,name,email,password_hash,email_verified)
             VALUES (%s,%s,%s,%s,FALSE)
+            ON CONFLICT (email) DO NOTHING
             """,
-            (uid, name, email, _password_hash(body.password)),
+            (uid, name, email, password_hash),
         )
-        user = conn.execute("SELECT * FROM users WHERE id=%s", (uid,)).fetchone()
-    _set_session_cookie(response, uid, request)
-    return {"ok": True, "user": _safe_user(user)}
+    # email_verified stays informational until a verification-email flow exists.
+    return {
+        "ok": True,
+        "message": "If this email can be registered, you can now sign in.",
+    }
 
 
 @router.post("/api/auth/login")
+@limiter.limit("5/minute")
 def login(body: LoginRequest, request: Request, response: Response):
     email = _normalize_email(body.email)
     with connection() as conn:
@@ -366,12 +372,14 @@ def login(body: LoginRequest, request: Request, response: Response):
 
 
 @router.get("/api/auth/me")
+@limiter.limit("30/minute")
 def me(request: Request):
     user = _decode_session(request, required=False)
     return {"authenticated": bool(user), "user": _safe_user(user) if user else None}
 
 
 @router.post("/api/auth/logout")
+@limiter.limit("10/minute")
 def logout(request: Request, response: Response):
     user = _decode_session(request, required=False)
     if user:
@@ -382,7 +390,8 @@ def logout(request: Request, response: Response):
 
 
 @router.get("/api/auth/google/start")
-def google_start():
+@limiter.limit("10/minute")
+def google_start(request: Request):
     client_id = os.getenv("GOOGLE_CLIENT_ID", "").strip()
     if not client_id or not os.getenv("GOOGLE_CLIENT_SECRET", "").strip():
         raise HTTPException(status_code=503, detail="Google sign-in is not configured")
@@ -412,6 +421,7 @@ def google_start():
 
 
 @router.get("/api/auth/google/callback")
+@limiter.limit("10/minute")
 def google_callback(code: str, state: str, request: Request):
     try:
         state_payload = jwt.decode(state, _secret(), algorithms=["HS256"])
@@ -520,7 +530,8 @@ def _send_reset_email(email: str, name: str, reset_url: str) -> bool:
 
 
 @router.post("/api/auth/forgot-password")
-def forgot_password(body: ForgotRequest):
+@limiter.limit("5/minute")
+def forgot_password(body: ForgotRequest, request: Request):
     email = _normalize_email(body.email)
     debug_url = None
     with connection() as conn:
@@ -547,7 +558,8 @@ def forgot_password(body: ForgotRequest):
 
 
 @router.post("/api/auth/reset-password")
-def reset_password(body: ResetRequest):
+@limiter.limit("5/minute")
+def reset_password(body: ResetRequest, request: Request):
     token_hash = hashlib.sha256(body.token.encode()).hexdigest()
     with connection() as conn:
         row = conn.execute(
@@ -768,6 +780,7 @@ def create_message(conversation_id: uuid.UUID, body: MessageCreate, request: Req
 
 
 @router.post("/api/feedback/voice-transcribe")
+@limiter.limit("5/minute")
 async def transcribe_feedback_voice(
     audio: UploadFile = File(...),
     language: str = Form(default="auto"),
