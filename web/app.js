@@ -1184,6 +1184,24 @@
       }
       bubble.appendChild(meta);
 
+      if (message.evidence_level === "none" || message.evidence_level === "related") {
+        const notice = document.createElement("div");
+        notice.className = `evidence-notice ${message.evidence_level === "none" ? "none" : "related"}`;
+        notice.setAttribute("role", "note");
+        const language = message.response_language || "en";
+        const copy = message.evidence_level === "none" ? {
+          hi: "यह प्रश्न उपलब्ध सत्संगों में स्पष्ट रूप से नहीं मिला। नीचे दी गई सामान्य जानकारी को प्रेमानंद जी का सीधा कथन न मानें।",
+          hinglish: "Yeh sawaal indexed satsang mein clearly cover nahi mila. Neeche ki general baat ko Premanand Ji ka direct statement na samjhein.",
+          en: "This question wasn't clearly covered in the indexed satsangs. Any general context below is not a direct statement from Premanand Ji."
+        } : {
+          hi: "संबंधित शिक्षा मिली है, लेकिन यह आपके सटीक प्रश्न का सीधा उत्तर न भी हो।",
+          hinglish: "Related shiksha mili hai, lekin ho sakta hai yeh aapke exact sawaal ka seedha jawab na ho.",
+          en: "A related teaching was found, but it may not directly answer your exact question."
+        };
+        notice.textContent = copy[language] || copy.en;
+        bubble.appendChild(notice);
+      }
+
       splitAnswer(message.content).forEach((section) => {
         const box = document.createElement("section");
         box.className = "answer-section";
