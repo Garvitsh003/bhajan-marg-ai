@@ -1,0 +1,71 @@
+name: Daily YouTube transcript ingestion
+
+on:
+  schedule:
+    # 03:15 Asia/Kolkata (21:45 UTC on the previous date)
+    - cron: "45 21 * * *"
+  workflow_dispatch:
+    inputs:
+      latest:
+        description: "Maximum recent items to inspect per channel surface (1-200)"
+        required: false
+        default: "40"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-youtube-ingestion
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      APP_MODE: cloud
+      QDRANT_URL: ${{ secrets.QDRANT_URL }}
+      QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
+      QDRANT_COLLECTION: ${{ vars.QDRANT_COLLECTION }}
+      QDRANT_DENSE_MODEL: ${{ vars.QDRANT_DENSE_MODEL }}
+      QDRANT_BM25_MODEL: ${{ vars.QDRANT_BM25_MODEL }}
+      TRANSCRIPT_USE_AUTHORIZED: ${{ vars.TRANSCRIPT_USE_AUTHORIZED }}
+      DAILY_SCAN_LATEST: ${{ vars.DAILY_SCAN_LATEST }}
+      WHISPER_FALLBACK: "false"
+      PYTHONPATH: .
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-cloud.txt
+
+      - name: Install ingestion dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-cloud.txt
+          pip install "yt-dlp>=2025.8.20" "webvtt-py>=0.5.1"
+
+      - name: Index newly published videos
+        run: |
+          LATEST="${{ github.event.inputs.latest || '' }}"
+          if [ -z "$LATEST" ]; then LATEST="${DAILY_SCAN_LATEST:-40}"; fi
+          python scripts/daily_cloud_ingest.py --latest "$LATEST"
+
+      - name: Notify optional webhook on failure
+        if: failure()
+        env:
+          INGESTION_ALERT_WEBHOOK: ${{ secrets.INGESTION_ALERT_WEBHOOK }}
+        run: |
+          if [ -n "$INGESTION_ALERT_WEBHOOK" ]; then
+            curl --fail --silent --show-error \
+              -H "Content-Type: application/json" \
+              -d '{"text":"Bhajan Marg daily YouTube ingestion failed. Open GitHub Actions for the run summary."}' \
+              "$INGESTION_ALERT_WEBHOOK"
+          else
+            echo "No INGESTION_ALERT_WEBHOOK configured; failure remains visible in GitHub Actions." >> "$GITHUB_STEP_SUMMARY"
+          fi
