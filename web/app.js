@@ -72,6 +72,7 @@
     profileTheme: $("profileTheme"),
     saveProfile: $("saveProfile"),
     logoutBtn: $("logoutBtn"),
+    deleteAccountBtn: $("deleteAccountBtn"),
     feedbackModal: $("feedbackModal"),
     feedbackComment: $("feedbackComment"),
     feedbackVoiceBtn: $("feedbackVoiceBtn"),
@@ -537,6 +538,17 @@
       const endpoint = state.authMode === "signup" ? "/api/auth/register" : "/api/auth/login";
       const payload = state.authMode === "signup" ? { email, password, name } : { email, password };
       const result = await api(endpoint, { method: "POST", body: payload });
+      if (state.authMode === "signup") {
+        // Registration deliberately avoids disclosing whether the address exists.
+        els.authStatus.textContent = result.message || "If this email can be registered, you can now sign in.";
+        state.authMode = "signin";
+        els.authTitle.textContent = "Sign in";
+        els.emailAuthSubmit.textContent = "Sign in";
+        els.toggleAuthMode.textContent = "Create account";
+        els.nameField.style.display = "none";
+        els.forgotPassword.style.visibility = "visible";
+        return;
+      }
       state.user = result.user || null;
       state.profile = state.user;
       closeModal(els.authModal);
@@ -1112,6 +1124,12 @@
     const card = document.createElement("a");
     card.className = "source-card";
     card.dataset.sourceIndex = String(index);
+    const sourceTitle = source.video_title || source.title || "Bhajan Marg satsang";
+    const sourceTimestamp = sourceStart(source) || "timestamp unavailable";
+    card.setAttribute?.(
+      "aria-label",
+      `${sourceTitle}. Timestamp ${sourceTimestamp}. Open original source video.`
+    );
     card.__source = source;
     card.__message = message;
     localizeSourceCard(card, source, message);
@@ -1130,6 +1148,13 @@
     const row = document.createElement("div");
     row.className = `message ${message.role === "user" ? "user" : "assistant"}`;
     row.dataset.messageId = message.id || "";
+    if (message.role === "assistant") {
+      row.lang = message.response_language === "hi" ? "hi"
+        : message.response_language === "hinglish" ? "hi-Latn" : "en";
+    } else {
+      row.lang = /[\u0900-\u097F]/.test(message.content || "") ? "hi"
+        : state.language === "hinglish" ? "hi-Latn" : "en";
+    }
 
     if (message.role === "assistant") {
       const avatar = document.createElement("div");
@@ -2043,6 +2068,23 @@
       closeModal(els.profileModal);
     });
     els.logoutBtn.addEventListener("click", logout);
+    els.deleteAccountBtn.addEventListener("click", async () => {
+      if (!state.user) return;
+      const confirmation = window.prompt(
+        "This permanently deletes your account, chats, and linked feedback. Type DELETE to continue."
+      );
+      if (confirmation !== "DELETE") return;
+      els.deleteAccountBtn.disabled = true;
+      try {
+        await api("/api/account", { method: "DELETE", body: { confirmation } });
+        closeModal(els.profileModal);
+        location.reload();
+      } catch (error) {
+        showToast(error.message || "Could not delete account");
+      } finally {
+        els.deleteAccountBtn.disabled = false;
+      }
+    });
     els.saveNewPassword.addEventListener("click", updatePassword);
     els.submitFeedback.addEventListener("click", submitDetailedFeedback);
     els.feedbackVoiceBtn?.addEventListener("click", startVoiceFeedback);
