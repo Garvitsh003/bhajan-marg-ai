@@ -72,6 +72,7 @@
     profileTheme: $("profileTheme"),
     saveProfile: $("saveProfile"),
     logoutBtn: $("logoutBtn"),
+    deleteAccountBtn: $("deleteAccountBtn"),
     feedbackModal: $("feedbackModal"),
     feedbackComment: $("feedbackComment"),
     feedbackVoiceBtn: $("feedbackVoiceBtn"),
@@ -2054,6 +2055,23 @@
       closeModal(els.profileModal);
     });
     els.logoutBtn.addEventListener("click", logout);
+    els.deleteAccountBtn.addEventListener("click", async () => {
+      if (!state.user) return;
+      const confirmation = window.prompt(
+        "This permanently deletes your account, chats, and linked feedback. Type DELETE to continue."
+      );
+      if (confirmation !== "DELETE") return;
+      els.deleteAccountBtn.disabled = true;
+      try {
+        await api("/api/account", { method: "DELETE", body: { confirmation } });
+        closeModal(els.profileModal);
+        location.reload();
+      } catch (error) {
+        showToast(error.message || "Could not delete account");
+      } finally {
+        els.deleteAccountBtn.disabled = false;
+      }
+    });
     els.saveNewPassword.addEventListener("click", updatePassword);
     els.submitFeedback.addEventListener("click", submitDetailedFeedback);
     els.feedbackVoiceBtn?.addEventListener("click", startVoiceFeedback);
