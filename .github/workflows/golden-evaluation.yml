@@ -1,0 +1,42 @@
+name: Golden retrieval evaluation
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Number of saved golden cases to run (1-100)"
+        required: false
+        default: "20"
+
+permissions:
+  contents: read
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BH_API_BASE_URL: ${{ vars.BH_API_BASE_URL }}
+      BH_ADMIN_TOKEN: ${{ secrets.BH_ADMIN_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-cloud.txt
+      - name: Install API client dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+      - name: Run saved golden cases
+        run: |
+          python scripts/run_golden_eval.py --limit "${{ github.event.inputs.limit || '20' }}" --output golden-eval-results.json
+      - name: Upload evaluation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-evaluation-report
+          path: golden-eval-results.json
+          if-no-files-found: ignore
+          retention-days: 30
