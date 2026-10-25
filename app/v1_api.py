@@ -19,6 +19,7 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from psycopg.types.json import Jsonb
 
+from . import db as local_db
 from .config import settings
 from .security import limiter
 from .product_db import configured as database_configured
@@ -219,6 +220,9 @@ class ProfilePatch(BaseModel):
     preferred_language: Literal["auto", "hi", "hinglish", "en"] | None = None
     theme: Literal["system", "light", "dark"] | None = None
 
+class DeleteAccountRequest(BaseModel):
+    confirmation: Literal["DELETE"]
+
 
 class ConversationCreate(BaseModel):
     title: str = Field(default="New chat", max_length=160)
@@ -369,6 +373,45 @@ def login(body: LoginRequest, request: Request, response: Response):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     _set_session_cookie(response, user["id"], request)
     return {"ok": True, "user": _safe_user(user)}
+
+
+@router.delete("/api/account")
+@limiter.limit("3/hour")
+def delete_account(body: DeleteAccountRequest, request: Request, response: Response):
+    user = _decode_session(request)
+    user_id = user["id"]
+    with connection() as conn:
+        conversation_rows = conn.execute(
+            "SELECT id FROM conversations WHERE user_id=%s", (user_id,)
+        ).fetchall()
+        conversation_ids = [str(row["id"]) for row in conversation_rows]
+        conn.execute(
+            "DELETE FROM feedback WHERE user_id=%s OR conversation_id IN "
+            "(SELECT id FROM conversations WHERE user_id=%s)", (user_id, user_id),
+        )
+        conn.execute(
+            "DELETE FROM analytics_events WHERE user_id=%s OR conversation_id IN "
+            "(SELECT id FROM conversations WHERE user_id=%s)", (user_id, user_id),
+        )
+        conn.execute(
+            "DELETE FROM golden_cases WHERE quality_case_id IN "
+            "(SELECT id FROM quality_cases WHERE user_id=%s OR conversation_id IN "
+            "(SELECT id FROM conversations WHERE user_id=%s))", (user_id, user_id),
+        )
+        conn.execute(
+            "DELETE FROM quality_cases WHERE user_id=%s OR conversation_id IN "
+            "(SELECT id FROM conversations WHERE user_id=%s)", (user_id, user_id),
+        )
+        if conversation_ids:
+            placeholders = ",".join("?" for _ in conversation_ids)
+            with local_db.tx() as sqlite_conn:
+                sqlite_conn.execute(
+                    f"DELETE FROM conversations WHERE conversation_id IN ({placeholders})",
+                    tuple(conversation_ids),
+                )
+        conn.execute("DELETE FROM users WHERE id=%s", (user_id,))
+    response.delete_cookie(_COOKIE, path="/", secure=_cookie_secure(), httponly=True, samesite="lax")
+    return {"ok": True, "message": "Account and associated data deleted."}
 
 
 @router.get("/api/auth/me")
