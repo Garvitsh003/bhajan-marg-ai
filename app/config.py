@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     qdrant_api_key: str = ""
     qdrant_dense_model: str = "sentence-transformers/all-minilm-l6-v2"
     qdrant_bm25_model: str = "qdrant/bm25"
-    cors_origins: str = "http://localhost:8000"
+    cors_origins: str = "http://localhost:8000,http://127.0.0.1:8000,https://bhajan-marg-ai-web.vercel.app"
     llm_timeout_seconds: float = 35
     chat_timeout_seconds: float = 180
     qdrant_timeout_seconds: float = 30

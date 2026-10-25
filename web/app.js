@@ -537,6 +537,17 @@
       const endpoint = state.authMode === "signup" ? "/api/auth/register" : "/api/auth/login";
       const payload = state.authMode === "signup" ? { email, password, name } : { email, password };
       const result = await api(endpoint, { method: "POST", body: payload });
+      if (state.authMode === "signup") {
+        // Registration deliberately avoids disclosing whether the address exists.
+        els.authStatus.textContent = result.message || "If this email can be registered, you can now sign in.";
+        state.authMode = "signin";
+        els.authTitle.textContent = "Sign in";
+        els.emailAuthSubmit.textContent = "Sign in";
+        els.toggleAuthMode.textContent = "Create account";
+        els.nameField.style.display = "none";
+        els.forgotPassword.style.visibility = "visible";
+        return;
+      }
       state.user = result.user || null;
       state.profile = state.user;
       closeModal(els.authModal);
