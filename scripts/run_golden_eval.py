@@ -56,7 +56,7 @@ def evaluate_case(case, response_json, http_status):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base-url", default=os.getenv("BH_API_BASE_URL", "https://bhajan-marg-ai.onrender.com"))
+    parser.add_argument("--base-url", default=os.getenv("BH_API_BASE_URL") or "https://bhajan-marg-ai.onrender.com")
     parser.add_argument("--admin-token", default=os.getenv("BH_ADMIN_TOKEN", ""))
     parser.add_argument("--limit", type=int, default=20)
     parser.add_argument("--delay-seconds", type=float, default=6.2)
