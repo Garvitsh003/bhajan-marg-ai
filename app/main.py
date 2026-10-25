@@ -24,11 +24,14 @@ from .search_backend import ensure_collection
 from .quality import record_chat_case
 from .security import limiter
 from .v1_api import router as v1_router, _require_admin
+from .monitoring import init_monitoring
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
+
+init_monitoring()
 
 
 @asynccontextmanager
@@ -119,17 +122,8 @@ def ui():
 
 @api.get("/api/health")
 def health():
-    return {
-        "ok": True,
-        "mode": settings.app_mode,
-        "llm_provider": settings.llm_provider,
-        "model": (
-            settings.gemini_model
-            if settings.llm_provider == "gemini"
-            else settings.ollama_model
-        ),
-    }
-
+    # Public load-balancer check: do not disclose provider/model configuration.
+    return {"ok": True}
 
 @api.get("/api/stats")
 def corpus_stats():
