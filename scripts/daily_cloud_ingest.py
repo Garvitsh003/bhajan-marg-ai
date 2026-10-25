@@ -97,8 +97,8 @@ def main():
     from app.config import settings
     from app.youtube import enrich_video, get_or_create_transcript, list_channel_videos
 
-    dense_model = os.getenv("QDRANT_DENSE_MODEL", "sentence-transformers/all-minilm-l6-v2")
-    sparse_model = os.getenv("QDRANT_BM25_MODEL", "qdrant/bm25")
+    dense_model = os.getenv("QDRANT_DENSE_MODEL") or "sentence-transformers/all-minilm-l6-v2"
+    sparse_model = os.getenv("QDRANT_BM25_MODEL") or "qdrant/bm25"
     client = QdrantClient(
         url=qdrant_url,
         api_key=qdrant_key,
