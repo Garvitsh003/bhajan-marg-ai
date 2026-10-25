@@ -782,6 +782,7 @@ def create_message(conversation_id: uuid.UUID, body: MessageCreate, request: Req
 @router.post("/api/feedback/voice-transcribe")
 @limiter.limit("5/minute")
 async def transcribe_feedback_voice(
+    request: Request,
     audio: UploadFile = File(...),
     language: str = Form(default="auto"),
 ):
