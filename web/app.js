@@ -1124,6 +1124,12 @@
     const card = document.createElement("a");
     card.className = "source-card";
     card.dataset.sourceIndex = String(index);
+    const sourceTitle = source.video_title || source.title || "Bhajan Marg satsang";
+    const sourceTimestamp = sourceStart(source) || "timestamp unavailable";
+    card.setAttribute?.(
+      "aria-label",
+      `${sourceTitle}. Timestamp ${sourceTimestamp}. Open original source video.`
+    );
     card.__source = source;
     card.__message = message;
     localizeSourceCard(card, source, message);
@@ -1142,6 +1148,13 @@
     const row = document.createElement("div");
     row.className = `message ${message.role === "user" ? "user" : "assistant"}`;
     row.dataset.messageId = message.id || "";
+    if (message.role === "assistant") {
+      row.lang = message.response_language === "hi" ? "hi"
+        : message.response_language === "hinglish" ? "hi-Latn" : "en";
+    } else {
+      row.lang = /[\u0900-\u097F]/.test(message.content || "") ? "hi"
+        : state.language === "hinglish" ? "hi-Latn" : "en";
+    }
 
     if (message.role === "assistant") {
       const avatar = document.createElement("div");

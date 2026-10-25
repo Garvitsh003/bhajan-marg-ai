@@ -42,6 +42,8 @@
       --shadow:0 24px 60px rgba(0,0,0,.30);
     }
     *{box-sizing:border-box}
+    :focus-visible{outline:3px solid var(--accent-2);outline-offset:3px}
+    .source-card:focus-visible{border-color:var(--accent-2);box-shadow:0 0 0 2px var(--accent-soft)}
     html,body{height:100%}
     body{
       margin:0;
@@ -532,7 +534,7 @@
     </header>
 
     <section class="messages-wrap" id="messagesWrap">
-      <div id="messages"></div>
+      <div id="messages" role="log" aria-label="Conversation messages" aria-live="off"></div>
     </section>
 
     <div class="composer-shell">
@@ -541,7 +543,7 @@
         <button class="primary-btn" id="askBtn" type="submit">Ask</button>
       </form>
       <div class="composer-note">
-        <span id="status" class="status">AI may make mistakes. Verify important context in the original satsang.</span>
+        <span id="status" class="status" role="status" aria-live="polite" aria-atomic="true">AI may make mistakes. Verify important context in the original satsang.</span>
       </div>
     </div>
   </main>
